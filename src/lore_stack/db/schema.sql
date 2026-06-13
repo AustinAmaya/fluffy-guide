@@ -115,42 +115,34 @@ CREATE TABLE IF NOT EXISTS lore_chunks (
   updated_at TEXT NOT NULL
 ) STRICT;
 
+-- A5: external-content FTS5 columns must mirror content-table column names
+-- (the doc-1 draft used a non-existent 'activation_keys' column, which makes any
+-- full scan of the FTS table fail), and the delete/update triggers must feed the
+-- FTS 'delete' command the exact values that were inserted (hence raw column
+-- values and COALESCE on the nullable title) or the index corrupts.
 CREATE VIRTUAL TABLE IF NOT EXISTS lore_chunks_fts USING fts5(
   title,
   body,
-  activation_keys,
+  activation_keys_json,
   content='lore_chunks',
   content_rowid='rowid'
 );
 
 CREATE TRIGGER IF NOT EXISTS lore_chunks_ai AFTER INSERT ON lore_chunks BEGIN
-  INSERT INTO lore_chunks_fts(rowid, title, body, activation_keys)
-  VALUES (
-    new.rowid,
-    COALESCE(new.title, ''),
-    new.body,
-    json_extract(new.activation_keys_json, '$')
-  );
+  INSERT INTO lore_chunks_fts(rowid, title, body, activation_keys_json)
+  VALUES (new.rowid, COALESCE(new.title, ''), new.body, new.activation_keys_json);
 END;
 
--- A5: delete/update triggers wrap old.title in COALESCE to mirror the insert path;
--- the external-content FTS 'delete' command must receive the exact values inserted,
--- otherwise updating or deleting a NULL-titled chunk corrupts the FTS index.
 CREATE TRIGGER IF NOT EXISTS lore_chunks_ad AFTER DELETE ON lore_chunks BEGIN
-  INSERT INTO lore_chunks_fts(lore_chunks_fts, rowid, title, body, activation_keys)
-  VALUES ('delete', old.rowid, COALESCE(old.title, ''), old.body, json_extract(old.activation_keys_json, '$'));
+  INSERT INTO lore_chunks_fts(lore_chunks_fts, rowid, title, body, activation_keys_json)
+  VALUES ('delete', old.rowid, COALESCE(old.title, ''), old.body, old.activation_keys_json);
 END;
 
 CREATE TRIGGER IF NOT EXISTS lore_chunks_au AFTER UPDATE ON lore_chunks BEGIN
-  INSERT INTO lore_chunks_fts(lore_chunks_fts, rowid, title, body, activation_keys)
-  VALUES ('delete', old.rowid, COALESCE(old.title, ''), old.body, json_extract(old.activation_keys_json, '$'));
-  INSERT INTO lore_chunks_fts(rowid, title, body, activation_keys)
-  VALUES (
-    new.rowid,
-    COALESCE(new.title, ''),
-    new.body,
-    json_extract(new.activation_keys_json, '$')
-  );
+  INSERT INTO lore_chunks_fts(lore_chunks_fts, rowid, title, body, activation_keys_json)
+  VALUES ('delete', old.rowid, COALESCE(old.title, ''), old.body, old.activation_keys_json);
+  INSERT INTO lore_chunks_fts(rowid, title, body, activation_keys_json)
+  VALUES (new.rowid, COALESCE(new.title, ''), new.body, new.activation_keys_json);
 END;
 
 CREATE TABLE IF NOT EXISTS chunk_embeddings (
