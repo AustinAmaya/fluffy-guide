@@ -6,10 +6,13 @@ soft deprecate) are the ONLY paths that bypass normal canonization, and both
 preserve history.
 """
 import json
+import re
 import sqlite3
 from pathlib import Path
 
 from flask import Flask, jsonify, request
+
+from lore_stack.db import init_db
 
 from lore_stack.compiler import compile_context
 from lore_stack.retrieval import gather_candidates
@@ -24,6 +27,16 @@ from lore_stack.writeback import (
 )
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+# Lore names become filenames: strict allowlist, no separators, no traversal.
+LORE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+
+
+class LoreSelectionError(Exception):
+    def __init__(self, message: str, status: int) -> None:
+        super().__init__(message)
+        self.message = message
+        self.status = status
 
 
 def _fact_payload(conn: sqlite3.Connection, fact: sqlite3.Row) -> dict:
@@ -109,19 +122,84 @@ def export_subgraph(conn: sqlite3.Connection, entity_slug: str | None = None) ->
     return {"entities": entities, "edges": edges}
 
 
-def create_app(db_path: str | Path) -> Flask:
-    app = Flask(__name__, static_folder=str(STATIC_DIR), static_url_path="/static")
-    db_path = str(db_path)
+def create_app(db_path: str | Path | None = None, *, home: str | Path | None = None) -> Flask:
+    """Serve one lore database (db_path) or a directory of them (home).
 
-    def conn() -> sqlite3.Connection:
-        c = sqlite3.connect(db_path)
+    In home mode every lore is an independent <name>.db file; API requests
+    select one via the ?lore=<name> query parameter, and /api/lores lists,
+    creates, and describes them.
+    """
+    if (db_path is None) == (home is None):
+        raise ValueError("create_app requires exactly one of db_path or home")
+    app = Flask(__name__, static_folder=str(STATIC_DIR), static_url_path="/static")
+    home_dir = Path(home) if home is not None else None
+    if home_dir is not None:
+        home_dir.mkdir(parents=True, exist_ok=True)
+
+    @app.errorhandler(LoreSelectionError)
+    def _lore_selection_error(exc):
+        return jsonify({"error": exc.message}), exc.status
+
+    def _open(path: Path | str) -> sqlite3.Connection:
+        c = sqlite3.connect(str(path))
         c.row_factory = sqlite3.Row
         c.execute("PRAGMA foreign_keys = ON")
         return c
 
+    def conn() -> sqlite3.Connection:
+        if home_dir is None:
+            return _open(db_path)
+        name = request.args.get("lore", "")
+        if not LORE_NAME_RE.match(name):
+            raise LoreSelectionError(
+                "a valid ?lore=<name> query parameter is required in multi-lore mode", 400
+            )
+        path = home_dir / f"{name}.db"
+        if not path.exists():
+            raise LoreSelectionError(f"unknown lore {name!r}", 404)
+        return _open(path)
+
     @app.get("/")
     def index():
         return (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+
+    @app.get("/api/lores")
+    def list_lores():
+        if home_dir is None:
+            return jsonify({"error": "server is running in single-database mode"}), 404
+        out = []
+        for path in sorted(home_dir.glob("*.db")):
+            entry = {"name": path.stem, "entities": 0, "stories": 0, "open_conflicts": 0}
+            c = _open(path)
+            try:
+                entry["entities"] = c.execute(
+                    "SELECT COUNT(*) FROM entities WHERE status != 'deprecated'"
+                ).fetchone()[0]
+                entry["stories"] = c.execute("SELECT COUNT(*) FROM story_runs").fetchone()[0]
+                entry["open_conflicts"] = c.execute(
+                    "SELECT COUNT(*) FROM adjudication_queue WHERE status='open'"
+                ).fetchone()[0]
+            except sqlite3.OperationalError:
+                entry["uninitialized"] = True
+            c.close()
+            out.append(entry)
+        return jsonify(out)
+
+    @app.post("/api/lores")
+    def create_lore():
+        if home_dir is None:
+            return jsonify({"error": "server is running in single-database mode"}), 404
+        body = request.get_json(silent=True) or {}
+        name = body.get("name", "")
+        if not isinstance(name, str) or not LORE_NAME_RE.match(name):
+            return jsonify({"error": "lore name must match [A-Za-z0-9][A-Za-z0-9_-]{0,63}"}), 400
+        path = home_dir / f"{name}.db"
+        if path.exists():
+            return jsonify({"error": f"lore {name!r} already exists"}), 409
+        c = _open(path)
+        init_db(c)
+        c.close()
+        return jsonify({"ok": True, "name": name})
 
     @app.get("/api/entities")
     def entities():

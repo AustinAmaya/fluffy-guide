@@ -32,6 +32,16 @@ DEFAULT_LANE_BUDGETS = {
 }
 DEFAULT_TOTAL_BUDGET = 1700
 
+# Lane that carries an entity's identity card, by entity kind.
+CARD_LANE_BY_KIND = {
+    "character": "character_card",
+    "location": "world_info",
+    "item": "world_info",
+    "organization": "world_info",
+    "event": "world_info",
+    "concept": "world_info",
+}
+
 
 @dataclass
 class CompiledContext:
@@ -53,6 +63,46 @@ def _normalize_text(text: str) -> str:
     return out + "\n" if out else ""
 
 
+def _synthesize_card(conn: sqlite3.Connection, entity_id: str) -> Optional[dict]:
+    """Build a deterministic identity card from an entity's active facts, for
+    query targets whose extraction never authored a card chunk. Soft facts are
+    marked unconfirmed; motif and deprecated facts never appear."""
+    ent = conn.execute(
+        "SELECT * FROM entities WHERE entity_id=? AND status != 'deprecated'", (entity_id,)
+    ).fetchone()
+    if ent is None:
+        return None
+    parts = []
+    for fact in conn.execute(
+        "SELECT * FROM facts WHERE subject_entity_id=? AND status IN ('canonical','soft')"
+        " ORDER BY predicate, fact_id",
+        (entity_id,),
+    ):
+        if fact["object_entity_id"]:
+            obj_row = conn.execute(
+                "SELECT display_name FROM entities WHERE entity_id=?",
+                (fact["object_entity_id"],),
+            ).fetchone()
+            obj = obj_row["display_name"] if obj_row else fact["object_entity_id"]
+        else:
+            obj = fact["object_literal"] or ""
+        marker = "" if fact["status"] == "canonical" else " [unconfirmed]"
+        parts.append(f"{fact['predicate']} {obj}{marker}")
+    summary = (ent["summary"] or "").strip()
+    body = f"{ent['display_name']} — {summary}" if summary else ent["display_name"]
+    if parts:
+        body = f"{body} Established: {'; '.join(parts)}."
+    return {
+        "chunk_id": f"factcard_{entity_id}",
+        "entity_id": entity_id,
+        "title": f"{ent['display_name']} (from facts)",
+        "body": body,
+        "insertion_lane": CARD_LANE_BY_KIND[ent["kind"]],
+        "priority": 950,
+        "token_estimate": token_estimate(body),
+    }
+
+
 def compile_context(
     conn: sqlite3.Connection,
     query: str,
@@ -68,6 +118,23 @@ def compile_context(
     by_lane: dict[str, list[Candidate]] = {lane: [] for lane in LANE_ORDER}
     for cand in candidates:
         by_lane[cand.row["insertion_lane"]].append(cand)
+    # Every query target deserves identity representation: if no authored chunk
+    # in its card lane is bound to it, synthesize a card from its facts.
+    for target in targets:
+        lane_rows = conn.execute(
+            "SELECT kind FROM entities WHERE entity_id=?", (target,)
+        ).fetchone()
+        card_lane = CARD_LANE_BY_KIND[lane_rows["kind"]] if lane_rows else None
+        has_card = card_lane and any(
+            c.row["entity_id"] == target for c in by_lane[card_lane]
+        )
+        if card_lane and not has_card:
+            synth = _synthesize_card(conn, target)
+            if synth is not None:
+                by_lane[card_lane].append(
+                    Candidate(chunk_id=synth["chunk_id"], row=synth, score=5.0,
+                              reasons=["target_without_card", "synthesized_from_facts"])
+                )
     # Score decides what is a candidate at all; within a lane, packing under
     # budget pressure is priority-first (invariant: dropped by priority).
     for lane in LANE_ORDER:

@@ -83,6 +83,22 @@ from the tech-stack report, verbatim, plus five amendments:
 The two human-authoritative carve-outs (manual edit, soft delete) are the only
 sanctioned exceptions to normal canonization, and both are unit-tested as such.
 
+## Multiple lores
+
+A *lore* is one self-contained SQLite database. To keep several (testing lores
+plus a production lore), point the server at a **lore home** directory instead
+of a single file:
+
+```bash
+lore-stack lores create --home lores --name production
+lore-stack lores create --home lores --name test-alpha
+lore-stack serve --home lores            # UI gains a lore dropdown + "+ lore"
+```
+
+Every CLI command targets a lore via `--db lores/<name>.db`; every API call in
+home mode selects one via `?lore=<name>`. Lores are fully isolated — nothing is
+shared between them. `serve --db one.db` still works for single-lore use.
+
 ## The visualizer
 
 `lore-stack serve --db lore.db` runs a local Flask JSON API plus a single-file,

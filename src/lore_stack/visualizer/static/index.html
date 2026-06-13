@@ -8,7 +8,7 @@
           --canon:#5fb878; --soft:#c9a93f; --motif:#b06fd4; --dep:#5b6172; --bad:#d46a6a; }
   * { box-sizing: border-box; }
   body { margin:0; font:13px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--fg);
-         display:grid; grid-template-columns: 1fr 420px; grid-template-rows: 44px 1fr; height:100vh; }
+         display:grid; grid-template-columns: 1fr minmax(280px, 30%); grid-template-rows: 44px 1fr; height:100vh; }
   header { grid-column:1/3; display:flex; align-items:center; gap:12px; padding:0 14px;
            border-bottom:1px solid var(--line); }
   header h1 { font-size:14px; margin:0 12px 0 0; color:var(--fg); }
@@ -19,7 +19,8 @@
   header button:hover, .panel button:hover { background:#39435a; }
   #graph { position:relative; overflow:hidden; }
   svg { width:100%; height:100%; display:block; }
-  aside { border-left:1px solid var(--line); overflow-y:auto; padding:12px; }
+  aside { border-left:1px solid var(--line); overflow-y:auto; overflow-x:hidden; padding:12px;
+          min-width:0; overflow-wrap:anywhere; }
   .panel { background:var(--panel); border:1px solid var(--line); border-radius:6px;
            padding:10px 12px; margin-bottom:12px; }
   .panel h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim);
@@ -36,9 +37,10 @@
   .node-label { fill:var(--fg); font-size:11px; pointer-events:none; }
   .edge-label { fill:var(--dim); font-size:9px; pointer-events:none; }
   line.edge { stroke:#3a4150; stroke-width:1.2; }
-  .editrow { display:flex; gap:6px; margin-top:8px; }
-  .editrow input { flex:1; background:#10131a; color:var(--fg); border:1px solid var(--line);
-                   border-radius:4px; padding:4px 6px; }
+  .editrow { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .editrow input { flex:1 1 90px; min-width:0; background:#10131a; color:var(--fg);
+                   border:1px solid var(--line); border-radius:4px; padding:4px 6px; }
+  .editrow button { flex:0 1 auto; }
   .danger { color:var(--bad); }
   details summary { cursor:pointer; color:var(--dim); }
 </style>
@@ -46,6 +48,9 @@
 <body>
 <header>
   <h1>lore-stack</h1>
+  <select id="loreSel" style="display:none; background:var(--panel); color:var(--fg);
+          border:1px solid var(--line); border-radius:4px; padding:6px 8px;"></select>
+  <button id="newLoreBtn" style="display:none">+ lore</button>
   <input id="query" placeholder='Query, e.g. "Tell another story with Boxwell"'>
   <button id="compileBtn">Compile context</button>
   <button id="exportBtn">Export JSON</button>
@@ -59,10 +64,43 @@
   <div class="panel" id="motifs"><h2>Motifs (never canon)</h2><div class="dim">none</div></div>
 </aside>
 <script>
-const api = p => fetch(p).then(r => r.json());
-const post = (p, body) => fetch(p, {method:"POST", headers:{"Content-Type":"application/json"},
-                                    body: JSON.stringify(body||{})}).then(async r => {
+let HOME_MODE = false, LORE = null;
+const withLore = p => (!HOME_MODE || !LORE) ? p
+  : p + (p.includes("?") ? "&" : "?") + "lore=" + encodeURIComponent(LORE);
+const api = p => fetch(withLore(p)).then(r => r.json());
+const post = (p, body) => fetch(withLore(p), {method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify(body||{})}).then(async r => {
   const j = await r.json(); if (!r.ok) throw new Error(j.error || r.statusText); return j; });
+
+async function initLores(){
+  const r = await fetch("/api/lores");
+  if (!r.ok) return;  // single-database mode: no switcher
+  HOME_MODE = true;
+  const sel = document.getElementById("loreSel");
+  const btn = document.getElementById("newLoreBtn");
+  sel.style.display = ""; btn.style.display = "";
+  const lores = await r.json();
+  const names = lores.map(l => l.name);
+  sel.innerHTML = lores.map(l =>
+    `<option value="${l.name}">${l.name} (${l.entities} entities` +
+    (l.open_conflicts ? `, ${l.open_conflicts} conflicts` : "") + `)</option>`).join("");
+  const saved = localStorage.getItem("lore");
+  LORE = names.includes(saved) ? saved : names[0] || null;
+  if (LORE) sel.value = LORE;
+  sel.onchange = () => { LORE = sel.value; localStorage.setItem("lore", LORE); loadGraph(); };
+  btn.onclick = async () => {
+    const name = prompt("New lore name (letters, digits, - and _):");
+    if (!name) return;
+    try {
+      await fetch("/api/lores", {method:"POST", headers:{"Content-Type":"application/json"},
+                                 body: JSON.stringify({name})})
+        .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error); });
+      localStorage.setItem("lore", name);
+      await initLores(); loadGraph();
+    } catch (e){ alert("Could not create lore: " + e.message); }
+  };
+}
 const KIND_COLOR = {character:"#6f9ceb", location:"#5fb878", item:"#c9a93f",
                     organization:"#d4836f", event:"#b06fd4", concept:"#7fc7c7"};
 let G = {entities:[], edges:[]}, sim = null;
@@ -70,6 +108,11 @@ let G = {entities:[], edges:[]}, sim = null;
 function esc(s){ const d=document.createElement("div"); d.textContent=String(s??""); return d.innerHTML; }
 
 async function loadGraph(){
+  if (HOME_MODE && !LORE) {
+    document.getElementById("detail").innerHTML =
+      '<h2>Entity</h2><div class="dim">No lores yet — click "+ lore" to create one.</div>';
+    return;
+  }
   G = await api("/api/graph");
   drawGraph();
   loadPanels();
@@ -237,7 +280,7 @@ document.getElementById("exportBtn").addEventListener("click", async () => {
   a.href = URL.createObjectURL(blob); a.download = "lore-export.json"; a.click();
 });
 
-loadGraph();
+initLores().then(loadGraph);
 </script>
 </body>
 </html>

@@ -189,3 +189,68 @@ def test_export_subgraph(client_db):
     slugs = {e["slug"] for e in scoped["entities"]}
     assert "mirel" in slugs and "boxwell" in slugs  # 1-hop neighbor included
     assert client.get("/api/export?entity=nope").status_code == 400
+
+
+def test_single_db_mode_has_no_lores_api(client_db):
+    client, _ = client_db
+    assert client.get("/api/lores").status_code == 404
+
+
+@pytest.fixture
+def home_client(tmp_path):
+    from lore_stack.visualizer.app import create_app as make
+
+    home = tmp_path / "lores"
+    app = make(home=home)
+    app.config["TESTING"] = True
+    return app.test_client(), home
+
+
+def test_home_mode_lore_lifecycle(home_client):
+    client, _ = home_client
+    assert client.get("/api/lores").get_json() == []
+
+    assert client.post("/api/lores", json={"name": "production"}).status_code == 200
+    assert client.post("/api/lores", json={"name": "test-alpha"}).status_code == 200
+    for bad in ["", "../evil", "a b", "x" * 80, ".hidden"]:
+        assert client.post("/api/lores", json={"name": bad}).status_code == 400
+    assert client.post("/api/lores", json={"name": "production"}).status_code == 409
+
+    lores = client.get("/api/lores").get_json()
+    assert [l["name"] for l in lores] == ["production", "test-alpha"]
+    assert all(l["entities"] == 0 and l["stories"] == 0 for l in lores)
+
+    # Lore selection is mandatory and validated in home mode.
+    assert client.get("/api/entities").status_code == 400
+    assert client.get("/api/entities?lore=nope").status_code == 404
+    assert client.get("/api/entities?lore=../evil").status_code == 400
+    assert client.get("/api/entities?lore=production").get_json() == []
+
+
+def test_home_mode_lores_are_isolated(home_client):
+    from lore_stack.db import connect
+
+    client, home = home_client
+    client.post("/api/lores", json={"name": "production"})
+    client.post("/api/lores", json={"name": "testing"})
+
+    conn = connect(home / "testing.db")
+    ingest_fixture(conn, 1)
+    conn.close()
+
+    testing = client.get("/api/entities?lore=testing").get_json()
+    assert any(e["slug"] == "boxwell" for e in testing)
+    assert client.get("/api/entities?lore=production").get_json() == []
+
+    # Writes target only the selected lore.
+    resp = client.post(
+        "/api/entity/ent_boxwell/edit?lore=testing",
+        json={"predicate": "profession", "value": "clockmaker"},
+    )
+    assert resp.status_code == 200
+    assert client.get("/api/entities?lore=production").get_json() == []
+    assert client.get("/api/facts?entity=ent_boxwell&lore=testing").get_json()
+
+    counts = {l["name"]: l for l in client.get("/api/lores").get_json()}
+    assert counts["testing"]["entities"] > 0
+    assert counts["production"]["entities"] == 0

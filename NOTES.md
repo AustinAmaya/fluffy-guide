@@ -14,6 +14,8 @@ One entry per non-obvious decision; one-line summaries up top.
 - [PowerShell `-Db` parameter conflict](#ps-db) — renamed to `-DbPath` in the skill stub.
 - [Verifier round: budget joiners, object namespaces, restore](#verifier-round) — three fixes from independent fresh-context review.
 - [Phase 2 adapter placement](#phase2) — separate `lore_stack_adapters` top-level package; structured outputs against the existing contract.
+- [Synthesized fact-cards for query targets](#fact-cards) — entities named in a query always get identity representation, even without an authored card chunk.
+- [Multi-lore = one DB file per lore](#multi-lore) — a lore home directory; isolation by construction, selected per request.
 
 ## Environment: hook python is the Hermes venv {#environment}
 `python` on PATH resolves to `...\hermes\hermes-agent\venv` — it has pytest and
@@ -106,6 +108,28 @@ Known accepted behaviors: counter-derived ids (`cmp_N`, `src_manual_N`) are
 safe because nothing hard-deletes; a contradiction whose object slug cannot be
 resolved is parked as a `needs_review` claim without an adjudication item (the
 conflict is not yet established).
+
+## Synthesized fact-cards for query targets {#fact-cards}
+Found via a real multi-entity query ("boxwell and mirel at whitmoor"): all
+targets resolved and Mirel's relationship chunk was retrieved, but she had no
+headline card because extraction never authored one — the compiler only
+assembled stored prose chunks, so an entity's *facts* had no path into the
+briefing. Fix: for each query target with no authored chunk in its card lane
+(characters → character_card, everything else → world_info), the compiler
+synthesizes a deterministic card from the entity summary + active facts (soft
+facts marked "[unconfirmed]", motifs excluded), priority 950 so authored cards
+outrank it, subject to normal budgets, traced as `synthesized_from_facts`.
+Synthesized cards are regenerated from live facts each compile, so they can
+never go stale the way authored chunks can (see the ontology spec, C7).
+
+## Multi-lore = one DB file per lore {#multi-lore}
+Testing lores and a production lore are separate `<name>.db` files in a "lore
+home" directory — isolation comes from the filesystem, not from tenancy columns
+inside one database (no risk of a missing WHERE clause leaking test canon into
+production). Home mode: `serve --home DIR`, every API request selects
+`?lore=<name>` (strict name allowlist blocks path traversal; unknown → 404),
+`/api/lores` lists/creates. Single-db mode unchanged. The frontend shows a
+dropdown + "+ lore" only when home mode is detected.
 
 ## Phase 2 adapter placement {#phase2}
 The live extractor lives in a *separate top-level package*

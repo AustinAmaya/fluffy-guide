@@ -199,9 +199,40 @@ def _cmd_export(args) -> int:
 def _cmd_serve(args) -> int:
     from lore_stack.visualizer.app import create_app
 
-    app = create_app(args.db)
-    print(f"lore visualizer on http://127.0.0.1:{args.port}")
+    if bool(args.db) == bool(args.home):
+        print("serve requires exactly one of --db (single lore) or --home (lore directory)",
+              file=sys.stderr)
+        return 1
+    app = create_app(args.db or None, home=args.home or None)
+    mode = f"home={args.home}" if args.home else f"db={args.db}"
+    print(f"lore visualizer on http://127.0.0.1:{args.port} ({mode})")
     app.run(host="127.0.0.1", port=args.port, debug=False)
+    return 0
+
+
+def _cmd_lores(args) -> int:
+    from lore_stack.visualizer.app import LORE_NAME_RE
+
+    home = Path(args.home)
+    if args.action == "create":
+        if not args.name or not LORE_NAME_RE.match(args.name):
+            print("lore name must match [A-Za-z0-9][A-Za-z0-9_-]{0,63}", file=sys.stderr)
+            return 1
+        home.mkdir(parents=True, exist_ok=True)
+        path = home / f"{args.name}.db"
+        if path.exists():
+            print(f"lore {args.name!r} already exists", file=sys.stderr)
+            return 1
+        conn = connect(path)
+        init_db(conn)
+        conn.close()
+        print(f"created lore {args.name!r} at {path}")
+        return 0
+    # list
+    if not home.exists():
+        print("[]")
+        return 0
+    print(json.dumps([p.stem for p in sorted(home.glob("*.db"))], indent=2))
     return 0
 
 
@@ -267,9 +298,16 @@ def main(argv=None) -> int:
     p.set_defaults(func=_cmd_export)
 
     p = sub.add_parser("serve", help="run the local lore visualizer web app")
-    p.add_argument("--db", required=True)
+    p.add_argument("--db", default=None, help="serve a single lore database")
+    p.add_argument("--home", default=None, help="serve a directory of lores (switchable in the UI)")
     p.add_argument("--port", type=int, default=8377)
     p.set_defaults(func=_cmd_serve)
+
+    p = sub.add_parser("lores", help="list or create lores in a lore home directory")
+    p.add_argument("action", choices=["list", "create"])
+    p.add_argument("--home", required=True)
+    p.add_argument("--name", default=None)
+    p.set_defaults(func=_cmd_lores)
 
     args = parser.parse_args(argv)
     return args.func(args)
