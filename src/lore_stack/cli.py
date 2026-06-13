@@ -2,6 +2,7 @@
 the visualizer and the Hermes skill stub are thin shells over the same library."""
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -33,6 +34,23 @@ def _load_delta(path: str) -> LoreDelta:
     return LoreDelta.model_validate(json.loads(raw))
 
 
+def _embedder(args):
+    """Pick the embedder: --embedder, else $LORE_STACK_EMBEDDER, else 'fake'.
+    Returns None (after printing why) if 'openai' is requested but unavailable, so
+    the caller can return a non-zero exit code."""
+    choice = getattr(args, "embedder", None) or os.environ.get("LORE_STACK_EMBEDDER") or "fake"
+    if choice == "openai":
+        try:
+            from lore_stack_adapters.openai_embedder import OpenAIEmbedder
+            return OpenAIEmbedder()
+        except ImportError:
+            print("openai embedder needs: pip install 'lore-stack[embeddings]'", file=sys.stderr)
+        except Exception as exc:  # e.g. OPENAI_API_KEY missing
+            print(f"openai embedder unavailable: {exc}", file=sys.stderr)
+        return None
+    return FakeEmbedder()
+
+
 def _cmd_ingest_delta(args) -> int:
     conn = connect(args.db, auto_snapshot=True)
     try:
@@ -40,13 +58,33 @@ def _cmd_ingest_delta(args) -> int:
     except Exception as exc:
         print(f"invalid delta: {exc}", file=sys.stderr)
         return 1
+    embedder = _embedder(args)
+    if embedder is None:
+        return 1
     story_text = Path(args.story_text).read_text(encoding="utf-8") if args.story_text else None
     try:
-        report = apply_delta(conn, delta, story_text=story_text, embedder=FakeEmbedder())
+        report = apply_delta(conn, delta, story_text=story_text, embedder=embedder,
+                             authoritative=args.canon)
     except WritebackError as exc:
         print(f"writeback failed: {exc}", file=sys.stderr)
         return 1
     print(report.model_dump_json(indent=2))
+    return 0
+
+
+def _cmd_stage_delta(args) -> int:
+    from lore_stack import staging
+
+    conn = connect(args.db)
+    try:
+        delta = _load_delta(args.file)
+    except Exception as exc:
+        print(f"invalid delta: {exc}", file=sys.stderr)
+        return 1
+    story_text = Path(args.story_text).read_text(encoding="utf-8") if args.story_text else None
+    staging_id = staging.stage(conn, delta, story_text=story_text)
+    print(f"staged {staging_id} ({len(delta.entities)} entities, {len(delta.claims)} claims,"
+          f" {len(delta.chunks)} chunks) -- review before applying")
     return 0
 
 
@@ -123,9 +161,12 @@ def _cmd_stage(args) -> int:
         return 0
     # apply
     selection = json.loads(args.selection) if args.selection else None
+    embedder = _embedder(args)
+    if embedder is None:
+        return 1
     try:
         report = staging.apply_staged(conn, args.id, selection=selection,
-                                      embedder=FakeEmbedder())
+                                      embedder=embedder)
     except staging.StagingError as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -135,8 +176,11 @@ def _cmd_stage(args) -> int:
 
 def _cmd_compile_context(args) -> int:
     conn = connect(args.db)
+    embedder = _embedder(args)
+    if embedder is None:
+        return 1
     result = compile_context(
-        conn, args.query, embedder=FakeEmbedder(), total_budget=args.budget
+        conn, args.query, embedder=embedder, total_budget=args.budget
     )
     if args.json:
         payload = {
@@ -377,7 +421,17 @@ def main(argv=None) -> int:
     p.add_argument("--db", required=True)
     p.add_argument("--file", required=True)
     p.add_argument("--story-text", default=None, help="optional story text file")
+    p.add_argument("--canon", action="store_true",
+                   help="operator-vouched DIRECT-TO-CANON: write every claim as canonical now")
+    p.add_argument("--embedder", choices=["fake", "openai"], default=None,
+                   help="embedder backend (default: $LORE_STACK_EMBEDDER or fake)")
     p.set_defaults(func=_cmd_ingest_delta)
+
+    p = sub.add_parser("stage-delta", help="stage a pre-made LoreDelta JSON for review (writes nothing yet)")
+    p.add_argument("--db", required=True)
+    p.add_argument("--file", required=True)
+    p.add_argument("--story-text", default=None, help="optional story text file")
+    p.set_defaults(func=_cmd_stage_delta)
 
     p = sub.add_parser("ingest-story", help="extract (FakeExtractor) + write back a story file")
     p.add_argument("--db", required=True)
@@ -400,6 +454,8 @@ def main(argv=None) -> int:
     p.add_argument("--status", default="pending", choices=["pending", "applied", "discarded"])
     p.add_argument("--selection", default=None,
                    help='JSON subset to apply, e.g. {"entities":[0],"claims":[0,1]}')
+    p.add_argument("--embedder", choices=["fake", "openai"], default=None,
+                   help="embedder backend for 'apply' (default: $LORE_STACK_EMBEDDER or fake)")
     p.set_defaults(func=_cmd_stage)
 
     p = sub.add_parser("compile-context", help="compile a bounded context block for a query")
@@ -408,6 +464,8 @@ def main(argv=None) -> int:
     p.add_argument("--budget", type=int, default=DEFAULT_TOTAL_BUDGET)
     p.add_argument("--out", default=None)
     p.add_argument("--json", action="store_true", help="emit full audit JSON instead of text")
+    p.add_argument("--embedder", choices=["fake", "openai"], default=None,
+                   help="embedder backend (default: $LORE_STACK_EMBEDDER or fake)")
     p.set_defaults(func=_cmd_compile_context)
 
     p = sub.add_parser("inspect", help="inspect entities, conflicts, motifs, or stories")

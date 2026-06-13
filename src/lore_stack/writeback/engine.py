@@ -106,6 +106,7 @@ def apply_delta(
     source_uri: Optional[str] = None,
     embedder: Optional[Embedder] = None,
     reviewed: bool = False,
+    authoritative: bool = False,
 ) -> WritebackReport:
     """Apply one validated LoreDelta inside a single transaction.
 
@@ -117,6 +118,13 @@ def apply_delta(
     distinct stories (a count), not a confidence threshold. The default
     (reviewed=False) keeps the legacy 0.7/0.9 thresholds for the direct-ingest
     path used by fixtures and tests.
+
+    authoritative=True is the operator-vouched DIRECT-TO-CANON path (the live
+    'ingest-delta --canon' flow): every claim is written as a canonical fact
+    immediately, with the same authority as a manual edit -- the named value wins
+    (single-valued predicates deprecate competing values), entities upsert as
+    canonical, and no soft/corroboration/adjudication/supersession applies. Use it
+    only for items the operator explicitly named during extraction.
     """
     checksum = delta_checksum(delta)
     existing = conn.execute(
@@ -131,14 +139,14 @@ def apply_delta(
     try:
         with conn:
             _apply_inner(conn, delta, checksum, story_text, source_kind, source_uri,
-                         embedder, report, now, reviewed)
+                         embedder, report, now, reviewed, authoritative)
     except sqlite3.IntegrityError as exc:
         raise WritebackError(f"delta violates a database constraint: {exc}") from exc
     return report
 
 
 def _apply_inner(conn, delta, checksum, story_text, source_kind, source_uri,
-                 embedder, report, now, reviewed=False) -> None:
+                 embedder, report, now, reviewed=False, authoritative=False) -> None:
     source_id = f"src_{checksum[:12]}"
     conn.execute(
         "INSERT INTO sources (source_id, source_kind, uri, checksum, created_at)"
@@ -175,8 +183,9 @@ def _apply_inner(conn, delta, checksum, story_text, source_kind, source_uri,
             conn.execute(
                 "INSERT INTO entities (entity_id, kind, slug, display_name, status, summary,"
                 " description, canonical_confidence, created_from_story_id, created_at,"
-                " updated_at) VALUES (?, ?, ?, ?, 'provisional', ?, NULL, ?, ?, ?, ?)",
-                (entity_id, upsert.kind, slug, upsert.display_name, upsert.summary,
+                " updated_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)",
+                (entity_id, upsert.kind, slug, upsert.display_name,
+                 "canonical" if authoritative else "provisional", upsert.summary,
                  upsert.confidence, delta.story_id, now, now),
             )
             report.entities_created.append(entity_id)
@@ -190,7 +199,8 @@ def _apply_inner(conn, delta, checksum, story_text, source_kind, source_uri,
             " salience) VALUES (?, ?, 'primary', 1, ?)",
             (delta.story_id, entity_id, upsert.confidence),
         )
-        # Entity promotion: corroborated across >=2 distinct stories.
+        # Entity promotion: corroborated across >=2 distinct stories -- or
+        # immediately when the operator vouched for the delta (authoritative).
         n_stories = conn.execute(
             "SELECT COUNT(DISTINCT story_id) FROM story_entities WHERE entity_id = ?",
             (entity_id,),
@@ -198,7 +208,7 @@ def _apply_inner(conn, delta, checksum, story_text, source_kind, source_uri,
         status = conn.execute(
             "SELECT status FROM entities WHERE entity_id = ?", (entity_id,)
         ).fetchone()["status"]
-        if n_stories >= 2 and status == "provisional":
+        if status == "provisional" and (authoritative or n_stories >= 2):
             conn.execute(
                 "UPDATE entities SET status='canonical', updated_at=? WHERE entity_id=?",
                 (now, entity_id),
@@ -207,7 +217,8 @@ def _apply_inner(conn, delta, checksum, story_text, source_kind, source_uri,
 
     # --- claims -> facts ---
     for idx, claim in enumerate(delta.claims):
-        _apply_claim(conn, delta.story_id, idx, claim, report, now, reviewed, embedder)
+        _apply_claim(conn, delta.story_id, idx, claim, report, now, reviewed, embedder,
+                     authoritative)
 
     # --- chunks ---
     for idx, chunk in enumerate(delta.chunks):
@@ -238,7 +249,7 @@ def _apply_inner(conn, delta, checksum, story_text, source_kind, source_uri,
 
 def _apply_claim(conn, story_id: str, idx: int, claim: ClaimInput,
                  report: WritebackReport, now: str, reviewed: bool = False,
-                 embedder: Optional[Embedder] = None) -> None:
+                 embedder: Optional[Embedder] = None, authoritative: bool = False) -> None:
     from lore_stack import registry  # lazy import: breaks the engine<->registry cycle
 
     claim_id = f"clm_{_short_hash(story_id, str(idx))}"
@@ -312,6 +323,38 @@ def _apply_claim(conn, story_id: str, idx: int, claim: ClaimInput,
         None,
     )
     others = [f for f in active if f is not match]
+
+    if authoritative:
+        # Operator-vouched, direct-to-canon: write this value as canonical now, with
+        # the same authority as a manual edit. The named value wins -- a single-valued
+        # predicate deprecates competing active values; multi-valued values coexist as
+        # canonical. No soft/corroboration/adjudication/supersession. ensure_registered
+        # keeps the A6 invariant (canonical facts have a registered predicate) for
+        # attributes; relationships are already registered (rejected above otherwise).
+        registry.ensure_registered(
+            conn, predicate, registered_by="operator",
+            range_="entity" if object_entity_id is not None else "text",
+        )
+        write_claim("accepted", subject_id)
+        if single_valued:
+            for f in others:
+                conn.execute(
+                    "UPDATE facts SET status='deprecated', updated_at=? WHERE fact_id=?",
+                    (now, f["fact_id"]),
+                )
+                _stale_chunks_for_facts(conn, [f["fact_id"]], now)
+        if match is not None:
+            if match["status"] != "canonical":
+                report.facts_promoted.append(match["fact_id"])
+            conn.execute(
+                "UPDATE facts SET status='canonical', last_supported_story_id=?,"
+                " confidence=MAX(confidence, ?), updated_at=? WHERE fact_id=?",
+                (story_id, claim.confidence, now, match["fact_id"]),
+            )
+        else:
+            _insert_fact(conn, subject_id, claim, object_entity_id, "canonical",
+                         story_id, claim_id, now, report, predicate)
+        return
 
     if match is not None:
         write_claim("accepted", subject_id)

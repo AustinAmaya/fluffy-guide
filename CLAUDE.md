@@ -48,7 +48,7 @@ src/lore_stack/
   frozen.py      frozen baselines (DB + history) and full hard reset
   lores.py       lore lifecycle (create/copy)
   visualizer/    Flask JSON API + single-file offline frontend
-  hermes/        thin skill stub that shells into the CLI (downstream consumer)
+  hermes/        two Hermes skills: extraction/ (LLM extraction instructions) + storage/ (CLI shell)
   cli.py         every operation is exposed here; the UI and skill are shells over the same library
 examples/lores/  committed seed worlds (harrow-hollow, clockwork-coast, winnie-the-pooh) — ship with the package
 tests/           the deterministic gate; fixtures under tests/fixtures/

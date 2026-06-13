@@ -195,10 +195,15 @@ fact; delete = soft deprecate).
   of a 1M window. Over-budget chunks are dropped whole, by priority — never
   truncated mid-fact.
 
-## Hermes integration
+## Hermes integration (go-live)
 
-One thin skill stub (`src/lore_stack/hermes/`) shells into the CLI. Hermes is a
-downstream consumer, not the owner; nothing in the core imports it.
+Two skills ship under `src/lore_stack/hermes/` (installed into `~/.hermes/skills/`):
+**`lore-extraction`** — instructions any tool-using LLM follows to turn a told story
+(+ operator guidance) into structured lore, split into a *direct-to-canon* delta and
+a *stage-for-review* delta — and **`narrative-lore`** — a thin CLI shell that stores
+them (`ingest-delta --canon`, `stage-delta`) and compiles continuity
+(`compile-context`). lore-stack stays model-free: **Hermes' own pinned LLM is the
+extractor**; nothing in the core imports a model. See `docs/GO_LIVE.md`.
 
 ## Live model adapters (opt-in)
 

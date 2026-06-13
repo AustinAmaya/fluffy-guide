@@ -10,7 +10,7 @@ from conftest import STORIES
 
 from lore_stack.db import connect
 
-SCRIPTS = Path(__file__).parents[1] / "src" / "lore_stack" / "hermes" / "scripts"
+SCRIPTS = Path(__file__).parents[1] / "src" / "lore_stack" / "hermes" / "storage" / "scripts"
 
 
 def _run_skill(args: list[str]) -> subprocess.CompletedProcess:
@@ -18,7 +18,8 @@ def _run_skill(args: list[str]) -> subprocess.CompletedProcess:
     if os.name == "nt":
         cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
                "-File", str(SCRIPTS / "lore_skill.ps1")]
-        flags = {"init-db": [], "ingest-delta": ["-File"], "compile-context": ["-Query", "-Out"]}
+        flags = {"init-db": [], "ingest-delta": ["-File"], "stage-delta": ["-File"],
+                 "compile-context": ["-Query", "-Out"]}
         command, db, *rest = args
         cmd += ["-Command", command, "-DbPath", db]
         for flag, value in zip(flags[command], rest):
@@ -51,6 +52,11 @@ def test_hermes_stub_end_to_end(tmp_path):
 
     text = Path(artifact).read_text(encoding="utf-8")
     assert "Boxwell is a quiet travelling clockmaker" in text
+
+    # The storage skill can also stage a delta for review (writes nothing to canon).
+    staged = _run_skill(["stage-delta", db_path, str(STORIES / "boxwell_story_02.delta.json")])
+    assert staged.returncode == 0, staged.stderr
+    assert "staged" in staged.stdout
 
     conn = connect(db_path)
     assert conn.execute("SELECT COUNT(*) FROM story_runs").fetchone()[0] == 1

@@ -178,17 +178,29 @@ On this reviewed path a human's approval replaces the confidence gate: approved
 claims always form soft facts, and promotion to canonical is corroboration-count
 only (≥2 distinct stories), regardless of the model's self-reported confidence.
 
-### Direct ingest (fixtures, scripts, trusted deltas)
+### Direct ingest, direct-to-canon, and stage-delta
 
 When you already trust a delta, skip review:
 
 ```bash
-lore-stack ingest-delta  --db lore.db --file story.delta.json [--story-text story.md]
-lore-stack ingest-story  --db lore.db --file story.md --fixtures tests/fixtures/stories
+lore-stack ingest-delta --db lore.db --file story.delta.json     # soft facts, normal canonization
+lore-stack ingest-delta --db lore.db --file direct.json --canon  # operator-vouched -> CANONICAL now
+lore-stack stage-delta  --db lore.db --file story.delta.json     # queue a pre-made delta for review
 ```
 
-The direct path keeps the original confidence thresholds (soft ≥ 0.7, promote ≥
-0.9). Re-applying a delta with an already-seen checksum is a detectable no-op.
+The plain direct path keeps the original confidence thresholds (soft ≥ 0.7,
+promote ≥ 0.9). **`--canon`** is the operator-authoritative path: every claim is
+written canonical immediately (the named value wins, like a manual edit) — it's how
+the live Hermes loop commits the items the operator explicitly named.
+**`stage-delta`** is the review-queue sibling of `ingest-delta` (stages a *pre-made*
+delta; `stage-story` is the fixture-based extractor equivalent). Re-applying a delta
+with an already-seen checksum is a detectable no-op.
+
+Add **`--embedder openai`** (or set `LORE_STACK_EMBEDDER=openai`) on `ingest-delta`,
+`stage-delta`, `stage apply`, and `compile-context` for live OpenAI semantic recall
+(needs `lore-stack[embeddings]` + `OPENAI_API_KEY`); the default is the fake
+embedder. Use the same embedder to ingest and to query. See `docs/GO_LIVE.md` for
+the full Hermes wiring.
 
 ---
 
@@ -375,11 +387,12 @@ carry the `model` marker and are excluded.
 | Command | What it does |
 |---|---|
 | `init-db --db` | Create the schema (idempotent migrations + registry seed). |
-| `ingest-delta --db --file [--story-text]` | Validate and write back a `LoreDelta` JSON (direct path). |
+| `ingest-delta --db --file [--story-text] [--canon] [--embedder]` | Write back a `LoreDelta` JSON; `--canon` = operator-authoritative direct-to-canon. |
+| `stage-delta --db --file [--story-text]` | Stage a pre-made `LoreDelta` JSON for review (writes nothing yet). |
 | `ingest-story --db --file --fixtures [--story-id]` | Extract (FakeExtractor) + write back a story file. |
 | `stage-story --db --file --fixtures [--story-id]` | Extract a story into the review queue (writes nothing). |
-| `stage list\|show\|apply\|discard --db [--id] [--selection] [--status]` | Drive the review queue. |
-| `compile-context --db --query [--budget] [--out] [--json]` | Compile a bounded context block. |
+| `stage list\|show\|apply\|discard --db [--id] [--selection] [--status] [--embedder]` | Drive the review queue. |
+| `compile-context --db --query [--budget] [--out] [--json] [--embedder]` | Compile a bounded context block. |
 | `inspect entity\|conflicts\|motifs\|stories --db [--slug]` | Inspect lore state. |
 | `edit-fact --db --entity-id --predicate [--value] [--object-entity-id]` | Authoritative manual edit. |
 | `deprecate --db [--entity-id] [--fact-id] [--chunk-id]` | Soft-delete. |

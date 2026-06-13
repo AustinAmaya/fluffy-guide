@@ -31,7 +31,15 @@ lore-stack = "lore_stack.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-lore_stack = ["db/schema.sql", "visualizer/static/*", "hermes/*.md", "hermes/scripts/*"]
+lore_stack = [
+    "db/*.sql",
+    "db/*.json",
+    "visualizer/static/*",
+    "hermes/extraction/*.md",
+    "hermes/extraction/references/*",
+    "hermes/storage/*.md",
+    "hermes/storage/scripts/*",
+]
 
 [tool.pytest.ini_options]
 addopts = ["--strict-markers", "-ra"]
