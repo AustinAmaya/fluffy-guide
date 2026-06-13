@@ -43,6 +43,34 @@ def test_seed_lore_loads_to_expected_size(db, lore_name, expected_entities):
     assert_invariants(db)
 
 
+def test_winnie_the_pooh_seed_loads(db):
+    """The hand-authored chapter-1 Pooh lore loads cleanly with its full cast."""
+    _ingest_lore(db, "winnie-the-pooh")
+    active = db.execute(
+        "SELECT COUNT(*) FROM entities WHERE status != 'deprecated'"
+    ).fetchone()[0]
+    assert active == 11
+
+    slugs = {r["slug"] for r in db.execute("SELECT slug FROM entities")}
+    assert {"winnie-the-pooh", "christopher-robin", "the-honey",
+            "the-great-oak-tree", "piglet"} <= slugs
+
+    # Pooh's many aliases resolved to one entity (no fork).
+    assert db.execute("SELECT COUNT(*) FROM entities WHERE slug='winnie-the-pooh'").fetchone()[0] == 1
+    aliases = {r["normalized_alias"] for r in db.execute(
+        "SELECT normalized_alias FROM entity_aliases a JOIN entities e USING (entity_id)"
+        " WHERE e.slug='winnie-the-pooh'")}
+    assert "edward bear" in aliases and "sanders" in aliases
+
+    # Connected world: relationship edges exist (friend_of, resides_in, etc.).
+    edges = db.execute(
+        "SELECT COUNT(*) FROM facts WHERE object_entity_id IS NOT NULL"
+        " AND status != 'deprecated'"
+    ).fetchone()[0]
+    assert edges >= 6
+    assert_invariants(db)
+
+
 def test_seed_lores_share_only_the_recurring_cast():
     """The two seed worlds overlap only on recurring characters: Boxwell and
     Mirel throughout, plus Tobias (the apprentice who follows Boxwell from the
