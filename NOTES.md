@@ -13,6 +13,7 @@ One entry per non-obvious decision; one-line summaries up top.
 - [Adjudication resolution UI not built](#adjudication) — read-only conflict list; manual edit supersedes.
 - [PowerShell `-Db` parameter conflict](#ps-db) — renamed to `-DbPath` in the skill stub.
 - [Verifier round: budget joiners, object namespaces, restore](#verifier-round) — three fixes from independent fresh-context review.
+- [Phase 2 adapter placement](#phase2) — separate `lore_stack_adapters` top-level package; structured outputs against the existing contract.
 
 ## Environment: hook python is the Hermes venv {#environment}
 `python` on PATH resolves to `...\hermes\hermes-agent\venv` — it has pytest and
@@ -105,3 +106,17 @@ Known accepted behaviors: counter-derived ids (`cmp_N`, `src_manual_N`) are
 safe because nothing hard-deletes; a contradiction whose object slug cannot be
 resolved is parked as a `needs_review` claim without an adjudication item (the
 conflict is not yet established).
+
+## Phase 2 adapter placement {#phase2}
+The live extractor lives in a *separate top-level package*
+(`lore_stack_adapters`) rather than a `lore_stack` subpackage, so directive 4
+("the core imports nothing model-specific") holds physically, not just by
+convention — importing `lore_stack` can never pull `anthropic`. The adapter
+uses `client.messages.parse` with the existing `LoreDelta` Pydantic model as
+the output format: schema enforcement happens server-side and validation
+client-side against the exact same contract the writeback engine enforces, so
+no repair layer is needed. Pydantic field constraints unsupported by the API's
+schema subset (min/max lengths, ge/le) are stripped by the SDK and validated
+client-side. Refusal/empty responses raise `ExtractionError`; nothing touches
+the DB on failure (validation precedes writeback). Parity test ran live and
+passed on 2026-06-12.

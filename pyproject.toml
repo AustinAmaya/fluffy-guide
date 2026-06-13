@@ -17,6 +17,9 @@ dev = [
     "pytest>=8",
     "hypothesis>=6",
 ]
+anthropic = [
+    "anthropic>=0.40",
+]
 
 [project.scripts]
 lore-stack = "lore_stack.cli:main"

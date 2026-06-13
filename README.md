@@ -108,8 +108,15 @@ fact; delete = soft deprecate).
 One thin skill stub (`src/lore_stack/hermes/`) shells into the CLI. Hermes is a
 downstream consumer, not the owner; nothing in the core imports it.
 
-## Phase 2 (live adapters)
+## Phase 2 (live adapter)
 
-Exactly one seam goes live behind the unchanged interface — see
-`src/lore_stack_adapters/` once the Phase 1 gate has passed. Live tests carry
-the `model` pytest marker; the fakes remain the default everywhere.
+Exactly one seam is live: the **Extractor**, as
+`lore_stack_adapters.anthropic_extractor.AnthropicExtractor` — a separate
+top-level package the core never imports. It calls `claude-opus-4-8` with
+structured outputs (`client.messages.parse` against the same `LoreDelta`
+Pydantic contract), behind the unchanged `Extractor` protocol. Install with
+`pip install -e ".[anthropic]"`; requires `ANTHROPIC_API_KEY`. The parity test
+(`tests/test_phase2_parity.py`, marker `model`) feeds a fixed story through the
+live path and asserts the same DB state shape as test B plus the full invariant
+suite. The fakes remain the default everywhere; `pytest -m "not model"` is
+unaffected.
