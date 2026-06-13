@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>lore-stack visualizer</title>
+<style>
+  :root { --bg:#14161c; --panel:#1d2027; --line:#2c313c; --fg:#d8dce6; --dim:#8b93a5;
+          --canon:#5fb878; --soft:#c9a93f; --motif:#b06fd4; --dep:#5b6172; --bad:#d46a6a; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:13px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--fg);
+         display:grid; grid-template-columns: 1fr 420px; grid-template-rows: 44px 1fr; height:100vh; }
+  header { grid-column:1/3; display:flex; align-items:center; gap:12px; padding:0 14px;
+           border-bottom:1px solid var(--line); }
+  header h1 { font-size:14px; margin:0 12px 0 0; color:var(--fg); }
+  header input { flex:1; max-width:480px; background:var(--panel); color:var(--fg);
+                 border:1px solid var(--line); border-radius:4px; padding:6px 8px; }
+  header button, .panel button { background:#2a3140; color:var(--fg); border:1px solid var(--line);
+                 border-radius:4px; padding:6px 10px; cursor:pointer; }
+  header button:hover, .panel button:hover { background:#39435a; }
+  #graph { position:relative; overflow:hidden; }
+  svg { width:100%; height:100%; display:block; }
+  aside { border-left:1px solid var(--line); overflow-y:auto; padding:12px; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:6px;
+           padding:10px 12px; margin-bottom:12px; }
+  .panel h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim);
+              margin:0 0 8px; }
+  .fact { padding:4px 0; border-bottom:1px dashed var(--line); display:flex; gap:6px;
+          align-items:baseline; flex-wrap:wrap; }
+  .fact:last-child { border-bottom:none; }
+  .badge { font-size:10px; padding:1px 6px; border-radius:8px; color:#10131a; font-weight:600; }
+  .badge.canonical { background:var(--canon); } .badge.soft { background:var(--soft); }
+  .badge.motif { background:var(--motif); } .badge.deprecated { background:var(--dep); color:#cfd3dd; }
+  .dim { color:var(--dim); } .small { font-size:11px; }
+  pre { white-space:pre-wrap; background:#10131a; padding:8px; border-radius:4px;
+        max-height:300px; overflow-y:auto; font-size:12px; }
+  .node-label { fill:var(--fg); font-size:11px; pointer-events:none; }
+  .edge-label { fill:var(--dim); font-size:9px; pointer-events:none; }
+  line.edge { stroke:#3a4150; stroke-width:1.2; }
+  .editrow { display:flex; gap:6px; margin-top:8px; }
+  .editrow input { flex:1; background:#10131a; color:var(--fg); border:1px solid var(--line);
+                   border-radius:4px; padding:4px 6px; }
+  .danger { color:var(--bad); }
+  details summary { cursor:pointer; color:var(--dim); }
+</style>
+</head>
+<body>
+<header>
+  <h1>lore-stack</h1>
+  <input id="query" placeholder='Query, e.g. "Tell another story with Boxwell"'>
+  <button id="compileBtn">Compile context</button>
+  <button id="exportBtn">Export JSON</button>
+</header>
+<div id="graph"><svg id="svg"></svg></div>
+<aside>
+  <div class="panel" id="detail"><h2>Entity</h2><div class="dim">Click a node.</div></div>
+  <div class="panel" id="context" style="display:none"><h2>Compiled context preview</h2></div>
+  <div class="panel" id="retrieval" style="display:none"><h2>Retrieval inspector</h2></div>
+  <div class="panel" id="conflicts"><h2>Open conflicts</h2><div class="dim">none</div></div>
+  <div class="panel" id="motifs"><h2>Motifs (never canon)</h2><div class="dim">none</div></div>
+</aside>
+<script>
+const api = p => fetch(p).then(r => r.json());
+const post = (p, body) => fetch(p, {method:"POST", headers:{"Content-Type":"application/json"},
+                                    body: JSON.stringify(body||{})}).then(async r => {
+  const j = await r.json(); if (!r.ok) throw new Error(j.error || r.statusText); return j; });
+const KIND_COLOR = {character:"#6f9ceb", location:"#5fb878", item:"#c9a93f",
+                    organization:"#d4836f", event:"#b06fd4", concept:"#7fc7c7"};
+let G = {entities:[], edges:[]}, sim = null;
+
+function esc(s){ const d=document.createElement("div"); d.textContent=String(s??""); return d.innerHTML; }
+
+async function loadGraph(){
+  G = await api("/api/graph");
+  drawGraph();
+  loadPanels();
+}
+
+function drawGraph(){
+  const svg = document.getElementById("svg");
+  const W = svg.clientWidth || 800, H = svg.clientHeight || 600;
+  svg.innerHTML = "";
+  const nodes = G.entities.map((e,i) => ({...e,
+    x: W/2 + Math.cos(2*Math.PI*i/Math.max(G.entities.length,1)) * Math.min(W,H)/3.2,
+    y: H/2 + Math.sin(2*Math.PI*i/Math.max(G.entities.length,1)) * Math.min(W,H)/3.2,
+    vx:0, vy:0}));
+  const byId = Object.fromEntries(nodes.map(n => [n.entity_id, n]));
+  const edges = G.edges.filter(e => byId[e.subject_entity_id] && byId[e.object_entity_id]);
+
+  // tiny deterministic force layout: a few hundred fixed iterations
+  for (let it=0; it<300; it++){
+    for (const e of edges){
+      const a=byId[e.subject_entity_id], b=byId[e.object_entity_id];
+      const dx=b.x-a.x, dy=b.y-a.y, d=Math.hypot(dx,dy)||1, f=(d-140)*0.01;
+      a.vx+=f*dx/d; a.vy+=f*dy/d; b.vx-=f*dx/d; b.vy-=f*dy/d;
+    }
+    for (const a of nodes) for (const b of nodes){
+      if (a===b) continue;
+      const dx=b.x-a.x, dy=b.y-a.y, d2=dx*dx+dy*dy||1;
+      const f=Math.min(2000/d2, 4); a.vx-=f*dx/Math.sqrt(d2); a.vy-=f*dy/Math.sqrt(d2);
+    }
+    for (const n of nodes){
+      n.vx += (W/2-n.x)*0.002; n.vy += (H/2-n.y)*0.002;
+      n.x += n.vx*0.5; n.y += n.vy*0.5; n.vx*=0.6; n.vy*=0.6;
+      n.x = Math.max(30, Math.min(W-30, n.x)); n.y = Math.max(30, Math.min(H-30, n.y));
+    }
+  }
+  const NS = "http://www.w3.org/2000/svg";
+  for (const e of edges){
+    const a=byId[e.subject_entity_id], b=byId[e.object_entity_id];
+    const line = document.createElementNS(NS,"line");
+    line.setAttribute("class","edge");
+    line.setAttribute("x1",a.x); line.setAttribute("y1",a.y);
+    line.setAttribute("x2",b.x); line.setAttribute("y2",b.y);
+    svg.appendChild(line);
+    const t = document.createElementNS(NS,"text");
+    t.setAttribute("class","edge-label");
+    t.setAttribute("x",(a.x+b.x)/2); t.setAttribute("y",(a.y+b.y)/2 - 4);
+    t.setAttribute("text-anchor","middle");
+    t.textContent = e.predicate + (e.status==="soft" ? " (soft)" : "");
+    svg.appendChild(t);
+  }
+  for (const n of nodes){
+    const g = document.createElementNS(NS,"g");
+    g.style.cursor = "pointer";
+    g.addEventListener("click", () => showEntity(n.entity_id));
+    const c = document.createElementNS(NS,"circle");
+    c.setAttribute("cx",n.x); c.setAttribute("cy",n.y);
+    c.setAttribute("r", n.status==="canonical" ? 14 : 11);
+    c.setAttribute("fill", KIND_COLOR[n.kind] || "#888");
+    c.setAttribute("stroke", n.status==="canonical" ? "#fff" : "#555");
+    c.setAttribute("stroke-width", n.status==="canonical" ? 2 : 1);
+    if (n.status==="provisional") c.setAttribute("stroke-dasharray","3,2");
+    g.appendChild(c);
+    const t = document.createElementNS(NS,"text");
+    t.setAttribute("class","node-label");
+    t.setAttribute("x",n.x); t.setAttribute("y",n.y+26); t.setAttribute("text-anchor","middle");
+    t.textContent = n.display_name;
+    g.appendChild(t);
+    svg.appendChild(g);
+  }
+}
+
+function factRow(f, withActions){
+  const obj = f.object_literal ?? f.object_entity_id ?? "";
+  const prov = f.provenance
+    ? (f.provenance.kind === "manual"
+       ? `manual edit (${f.provenance.source_id})`
+       : `${f.provenance.story_title ?? f.provenance.story_id} — “${f.provenance.evidence_excerpt ?? ""}” (conf ${f.provenance.claim_confidence})`)
+    : "";
+  return `<div class="fact">
+    <span class="badge ${esc(f.status)}">${esc(f.status)}</span>
+    <b>${esc(f.predicate)}</b><span>= ${esc(obj)}</span>
+    ${withActions && f.status!=="deprecated" ? `<button class="small danger" onclick="dropFact('${esc(f.fact_id)}')">delete</button>` : ""}
+    <div class="small dim" style="flex-basis:100%">${esc(prov)}</div>
+  </div>`;
+}
+
+async function showEntity(entityId){
+  const facts = await api("/api/facts?entity=" + encodeURIComponent(entityId));
+  const ent = G.entities.find(e => e.entity_id === entityId) || {display_name: entityId};
+  const active = facts.filter(f => f.status !== "deprecated");
+  const history = facts.filter(f => f.status === "deprecated");
+  document.getElementById("detail").innerHTML = `
+    <h2>Entity</h2>
+    <div><b>${esc(ent.display_name)}</b> <span class="dim">(${esc(ent.kind||"")}, ${esc(ent.status||"")})</span></div>
+    <div class="small dim">${esc(ent.summary||"")}</div>
+    <div class="small dim">aliases: ${esc((ent.aliases||[]).join(", "))}</div>
+    <div style="margin-top:8px">${active.map(f => factRow(f, true)).join("") || '<span class="dim">no facts</span>'}</div>
+    ${history.length ? `<details><summary>${history.length} deprecated (history)</summary>${history.map(f => factRow(f,false)).join("")}</details>` : ""}
+    <div class="editrow">
+      <input id="ep" placeholder="predicate">
+      <input id="ev" placeholder="value">
+      <button onclick="editFact('${esc(entityId)}')">save (canonical)</button>
+    </div>
+    <div class="small dim">Operator edits are authoritative: written as canonical with a manual
+    source, bypassing adjudication. Prior values are kept as deprecated history.</div>
+    <div class="editrow"><button class="danger" onclick="dropEntity('${esc(entityId)}')">delete entity (soft)</button></div>`;
+}
+
+async function editFact(entityId){
+  const predicate = document.getElementById("ep").value.trim();
+  const value = document.getElementById("ev").value;
+  try {
+    await post(`/api/entity/${encodeURIComponent(entityId)}/edit`, {predicate, value});
+    await loadGraph(); await showEntity(entityId);
+  } catch (e){ alert("Edit rejected: " + e.message); }
+}
+async function dropFact(factId){
+  try { await post(`/api/fact/${encodeURIComponent(factId)}/deprecate`); await loadGraph(); }
+  catch (e){ alert(e.message); }
+}
+async function dropEntity(entityId){
+  if (!confirm("Soft-delete this entity? History is preserved and recoverable.")) return;
+  try { await post(`/api/entity/${encodeURIComponent(entityId)}/deprecate`); await loadGraph(); }
+  catch (e){ alert(e.message); }
+}
+
+async function loadPanels(){
+  const conflicts = await api("/api/conflicts");
+  document.getElementById("conflicts").innerHTML = "<h2>Open conflicts</h2>" +
+    (conflicts.length ? conflicts.map(c => `
+      <div class="fact"><span class="badge deprecated">open</span>
+        <span class="small">${esc(c.reason)}</span>
+        <div class="small dim" style="flex-basis:100%">proposed:
+          ${esc(c.payload.proposed_object_literal ?? c.payload.proposed_object_entity_id ?? "?")}
+          vs existing: ${esc(c.payload.existing_object_literal ?? c.payload.existing_object_entity_id ?? "?")}</div>
+      </div>`).join("") : '<div class="dim">none</div>');
+  const motifs = await api("/api/motifs");
+  document.getElementById("motifs").innerHTML = "<h2>Motifs (never canon)</h2>" +
+    (motifs.length ? motifs.map(f => factRow(f,false)).join("") : '<div class="dim">none</div>');
+}
+
+document.getElementById("compileBtn").addEventListener("click", async () => {
+  const query = document.getElementById("query").value.trim();
+  if (!query) return;
+  const [ctx, cands] = [await post("/api/query_context", {query}),
+                        await api("/api/retrieval?q=" + encodeURIComponent(query))];
+  const ctxPanel = document.getElementById("context");
+  ctxPanel.style.display = "";
+  ctxPanel.innerHTML = `<h2>Compiled context preview</h2>
+    <div class="small dim">${ctx.total_tokens}/${ctx.budget_tokens} tokens — each piece traced below</div>
+    <pre>${esc(ctx.text)}</pre>
+    ${ctx.selected.map(s => `<div class="small">✔ <b>${esc(s.lane)}</b> ${esc(s.title)}
+      <span class="dim">${esc(s.chunk_id)} score ${s.score} [${esc(s.reasons.join(", "))}]</span></div>`).join("")}
+    ${ctx.dropped.map(d => `<div class="small dim">✘ ${esc(d.title)} (${esc(d.disposition)})</div>`).join("")}`;
+  const rPanel = document.getElementById("retrieval");
+  rPanel.style.display = "";
+  rPanel.innerHTML = "<h2>Retrieval inspector</h2>" + cands.map(c =>
+    `<div class="small"><b>${c.score}</b> ${esc(c.title)}
+     <span class="dim">${esc(c.lane)} [${esc(c.reasons.join(", "))}]</span></div>`).join("");
+});
+
+document.getElementById("exportBtn").addEventListener("click", async () => {
+  const data = await api("/api/export");
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "lore-export.json"; a.click();
+});
+
+loadGraph();
+</script>
+</body>
+</html>
