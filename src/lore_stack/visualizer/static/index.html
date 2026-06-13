@@ -64,6 +64,7 @@
 </header>
 <div id="graph">
   <div id="graphControls">
+    <button id="homeBtn" title="Deselect any node and return to the home view">&#8962; home</button>
     <button id="zoomIn" title="Zoom in">+</button>
     <button id="zoomOut" title="Zoom out">&minus;</button>
     <button id="resetView" title="Reset view">reset view</button>
@@ -73,7 +74,7 @@
 </div>
 <aside>
   <div class="panel" id="inbox" style="display:none"><h2>Review inbox</h2></div>
-  <div class="panel" id="detail"><h2>Entity</h2><div class="dim">Click a node.</div></div>
+  <div class="panel" id="detail"><h2>Home</h2><div class="dim">No node selected. Click a node in the graph to inspect it, or use the panels below.</div></div>
   <div class="panel" id="context" style="display:none"><h2>Compiled context preview</h2></div>
   <div class="panel" id="retrieval" style="display:none"><h2>Retrieval inspector</h2></div>
   <div class="panel" id="conflicts"><h2>Open conflicts</h2><div class="dim">none</div></div>
@@ -161,6 +162,10 @@ function setupPanZoom(){
   window.addEventListener("mouseup", () => { panning = false; svg.classList.remove("panning"); });
   // Suppress the node click that would otherwise fire at the end of a drag.
   svg.addEventListener("click", e => { if (moved) { e.stopPropagation(); moved = false; } }, true);
+  // A plain click on empty graph background (not a node, not a drag) deselects.
+  svg.addEventListener("click", e => {
+    if (e.target === svg || e.target.id === "viewport") exitToHome();
+  });
   svg.addEventListener("wheel", e => {
     e.preventDefault();
     const rect = svg.getBoundingClientRect();
@@ -173,6 +178,7 @@ function setupPanZoom(){
     view.ty = my - (my - view.ty) * k;
     view.scale = ns; applyView();
   }, {passive: false});
+  document.getElementById("homeBtn").onclick = exitToHome;
   document.getElementById("zoomIn").onclick = () => zoomBy(1.25);
   document.getElementById("zoomOut").onclick = () => zoomBy(1/1.25);
   document.getElementById("resetView").onclick = resetView;
@@ -270,13 +276,23 @@ function factRow(f, withActions){
   </div>`;
 }
 
+const HOME_DETAIL = '<h2>Home</h2><div class="dim">No node selected. Click a node'
+  + ' in the graph to inspect it, or use the panels below — open conflicts, motifs,'
+  + ' review inbox, and history.</div>';
+
+function exitToHome(){
+  // If a snapshot preview is showing, return to the live graph first.
+  if (typeof previewingSeq !== "undefined" && previewingSeq !== null) exitPreview();
+  document.getElementById("detail").innerHTML = HOME_DETAIL;
+}
+
 async function showEntity(entityId){
   const facts = await api("/api/facts?entity=" + encodeURIComponent(entityId));
   const ent = G.entities.find(e => e.entity_id === entityId) || {display_name: entityId};
   const active = facts.filter(f => f.status !== "deprecated");
   const history = facts.filter(f => f.status === "deprecated");
   document.getElementById("detail").innerHTML = `
-    <h2>Entity</h2>
+    <h2>Entity <button class="small" style="float:right" onclick="exitToHome()">&#8962; home</button></h2>
     <div><b>${esc(ent.display_name)}</b> <span class="dim">(${esc(ent.kind||"")}, ${esc(ent.status||"")})</span></div>
     <div class="small dim">${esc(ent.summary||"")}</div>
     <div class="small dim">aliases: ${esc((ent.aliases||[]).join(", "))}</div>
