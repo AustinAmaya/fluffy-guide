@@ -34,7 +34,7 @@ def _load_delta(path: str) -> LoreDelta:
 
 
 def _cmd_ingest_delta(args) -> int:
-    conn = connect(args.db)
+    conn = connect(args.db, auto_snapshot=True)
     try:
         delta = _load_delta(args.file)
     except Exception as exc:
@@ -51,7 +51,7 @@ def _cmd_ingest_delta(args) -> int:
 
 
 def _cmd_ingest_story(args) -> int:
-    conn = connect(args.db)
+    conn = connect(args.db, auto_snapshot=True)
     story_path = Path(args.file)
     story_text = story_path.read_text(encoding="utf-8")
     extractor = FakeExtractor.from_fixture_dir(Path(args.fixtures))
@@ -131,7 +131,7 @@ def _cmd_inspect(args) -> int:
 
 
 def _cmd_edit_fact(args) -> int:
-    conn = connect(args.db)
+    conn = connect(args.db, auto_snapshot=True)
     try:
         fact_id = manual_edit_fact(
             conn,
@@ -148,7 +148,7 @@ def _cmd_edit_fact(args) -> int:
 
 
 def _cmd_deprecate(args) -> int:
-    conn = connect(args.db)
+    conn = connect(args.db, auto_snapshot=True)
     try:
         if args.entity_id:
             deprecate_entity(conn, args.entity_id)
@@ -167,7 +167,7 @@ def _cmd_deprecate(args) -> int:
 
 
 def _cmd_restore(args) -> int:
-    conn = connect(args.db)
+    conn = connect(args.db, auto_snapshot=True)
     try:
         restore_entity(conn, args.entity_id)
     except WritebackError as exc:
@@ -193,6 +193,40 @@ def _cmd_export(args) -> int:
         print("\n".join(lines))
     else:
         print(json.dumps(payload, indent=2, default=str))
+    return 0
+
+
+def _cmd_snapshot(args) -> int:
+    from lore_stack import snapshots
+
+    if args.action == "create":
+        conn = connect(args.db)
+        entry = snapshots.create(conn, args.db, args.label or "manual")
+        conn.close()
+        print(f"snapshot {entry['seq']:06d} created ({entry['operation']})")
+        return 0
+    if args.action == "list":
+        rows = snapshots.list_snapshots(args.db)
+        if not rows:
+            print("(no snapshots)")
+            return 0
+        for e in rows:
+            c = e["counts"]
+            print(f"  {e['seq']:06d}  before {e['operation']:32}  "
+                  f"{c['stories']}st {c['entities']}ent {c['facts']}fct "
+                  f"{c['open_conflicts']}cf  {e['created_at']}")
+        return 0
+    # rollback
+    if args.seq is None:
+        print("rollback requires --seq <sequence>", file=sys.stderr)
+        return 1
+    try:
+        info = snapshots.rollback(args.db, args.seq)
+    except FileNotFoundError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(f"rolled back to snapshot {info['restored_seq']:06d} "
+          f"(state before {info['operation']}); a pre-rollback snapshot was saved")
     return 0
 
 
@@ -308,6 +342,13 @@ def main(argv=None) -> int:
     p.add_argument("--home", required=True)
     p.add_argument("--name", default=None)
     p.set_defaults(func=_cmd_lores)
+
+    p = sub.add_parser("snapshot", help="manage point-in-time snapshots of a lore")
+    p.add_argument("action", choices=["create", "list", "rollback"])
+    p.add_argument("--db", required=True)
+    p.add_argument("--seq", type=int, default=None, help="snapshot sequence for rollback")
+    p.add_argument("--label", default=None, help="label for a manual 'create'")
+    p.set_defaults(func=_cmd_snapshot)
 
     args = parser.parse_args(argv)
     return args.func(args)

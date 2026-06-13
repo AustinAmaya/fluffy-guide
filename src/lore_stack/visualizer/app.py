@@ -12,7 +12,8 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request
 
-from lore_stack.db import init_db
+from lore_stack import snapshots
+from lore_stack.db import connect, init_db
 
 from lore_stack.compiler import compile_context
 from lore_stack.retrieval import gather_candidates
@@ -140,15 +141,13 @@ def create_app(db_path: str | Path | None = None, *, home: str | Path | None = N
     def _lore_selection_error(exc):
         return jsonify({"error": exc.message}), exc.status
 
-    def _open(path: Path | str) -> sqlite3.Connection:
-        c = sqlite3.connect(str(path))
-        c.row_factory = sqlite3.Row
-        c.execute("PRAGMA foreign_keys = ON")
-        return c
+    def _open(path: Path | str, *, auto_snapshot: bool = False) -> sqlite3.Connection:
+        return connect(path, auto_snapshot=auto_snapshot)
 
-    def conn() -> sqlite3.Connection:
+    def _lore_path() -> Path:
+        """Resolve and validate the target lore's db path for the current request."""
         if home_dir is None:
-            return _open(db_path)
+            return Path(db_path)
         name = request.args.get("lore", "")
         if not LORE_NAME_RE.match(name):
             raise LoreSelectionError(
@@ -157,7 +156,10 @@ def create_app(db_path: str | Path | None = None, *, home: str | Path | None = N
         path = home_dir / f"{name}.db"
         if not path.exists():
             raise LoreSelectionError(f"unknown lore {name!r}", 404)
-        return _open(path)
+        return path
+
+    def conn(*, auto_snapshot: bool = False) -> sqlite3.Connection:
+        return _open(_lore_path(), auto_snapshot=auto_snapshot)
 
     @app.get("/")
     def index():
@@ -301,7 +303,7 @@ def create_app(db_path: str | Path | None = None, *, home: str | Path | None = N
             return jsonify({"error": "predicate is required"}), 400
         value = body.get("value")
         object_entity_id = body.get("object_entity_id")
-        c = conn()
+        c = conn(auto_snapshot=True)
         try:
             fact_id = manual_edit_fact(
                 c, entity_id=entity_id, predicate=predicate.strip(),
@@ -317,7 +319,7 @@ def create_app(db_path: str | Path | None = None, *, home: str | Path | None = N
 
     @app.post("/api/entity/<entity_id>/deprecate")
     def deprecate_entity_route(entity_id):
-        c = conn()
+        c = conn(auto_snapshot=True)
         try:
             deprecate_entity(c, entity_id)
         except WritebackError as exc:
@@ -328,7 +330,7 @@ def create_app(db_path: str | Path | None = None, *, home: str | Path | None = N
 
     @app.post("/api/entity/<entity_id>/restore")
     def restore_entity_route(entity_id):
-        c = conn()
+        c = conn(auto_snapshot=True)
         try:
             restore_entity(c, entity_id)
         except WritebackError as exc:
@@ -339,7 +341,7 @@ def create_app(db_path: str | Path | None = None, *, home: str | Path | None = N
 
     @app.post("/api/fact/<fact_id>/deprecate")
     def deprecate_fact_route(fact_id):
-        c = conn()
+        c = conn(auto_snapshot=True)
         try:
             deprecate_fact(c, fact_id)
         except WritebackError as exc:
@@ -350,7 +352,7 @@ def create_app(db_path: str | Path | None = None, *, home: str | Path | None = N
 
     @app.post("/api/chunk/<chunk_id>/deprecate")
     def deprecate_chunk_route(chunk_id):
-        c = conn()
+        c = conn(auto_snapshot=True)
         try:
             deprecate_chunk(c, chunk_id)
         except WritebackError as exc:
@@ -369,5 +371,17 @@ def create_app(db_path: str | Path | None = None, *, home: str | Path | None = N
             return jsonify({"error": str(exc)}), 400
         c.close()
         return jsonify(out)
+
+    @app.get("/api/snapshots")
+    def list_snapshots_route():
+        return jsonify(snapshots.list_snapshots(_lore_path()))
+
+    @app.post("/api/snapshots/<int:seq>/rollback")
+    def rollback_route(seq):
+        try:
+            info = snapshots.rollback(_lore_path(), seq)
+        except FileNotFoundError as exc:
+            return jsonify({"error": str(exc)}), 404
+        return jsonify({"ok": True, **info})
 
     return app

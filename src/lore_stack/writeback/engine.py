@@ -23,6 +23,7 @@ from typing import Optional
 
 from lore_stack.models.delta import ClaimInput, LoreDelta, WritebackReport
 from lore_stack.seams.embedder import Embedder, pack_vector
+from lore_stack.snapshots import maybe_snapshot
 
 PROMOTION_CONFIDENCE = 0.9
 SOFT_FACT_CONFIDENCE = 0.7
@@ -116,6 +117,7 @@ def apply_delta(
     if existing:
         return WritebackReport(story_id=delta.story_id, noop=True)
 
+    maybe_snapshot(conn, f"ingest {delta.story_id}")
     report = WritebackReport(story_id=delta.story_id)
     now = _now()
     try:
@@ -399,6 +401,7 @@ def manual_edit_fact(
         ).fetchone()
         if obj is None or obj["status"] == "deprecated":
             raise WritebackError(f"unknown or deprecated object entity {object_entity_id!r}")
+    maybe_snapshot(conn, f"edit {entity_id}.{predicate}")
     now = _now()
     with conn:
         n = conn.execute("SELECT COUNT(*) FROM sources WHERE source_kind='manual'").fetchone()[0]
@@ -429,6 +432,7 @@ def deprecate_fact(conn: sqlite3.Connection, fact_id: str) -> None:
     row = conn.execute("SELECT fact_id FROM facts WHERE fact_id=?", (fact_id,)).fetchone()
     if row is None:
         raise WritebackError(f"unknown fact {fact_id!r}")
+    maybe_snapshot(conn, f"deprecate fact {fact_id}")
     now = _now()
     with conn:
         conn.execute(
@@ -440,6 +444,7 @@ def deprecate_chunk(conn: sqlite3.Connection, chunk_id: str) -> None:
     row = conn.execute("SELECT chunk_id FROM lore_chunks WHERE chunk_id=?", (chunk_id,)).fetchone()
     if row is None:
         raise WritebackError(f"unknown chunk {chunk_id!r}")
+    maybe_snapshot(conn, f"deprecate chunk {chunk_id}")
     now = _now()
     with conn:
         conn.execute(
@@ -461,6 +466,7 @@ def restore_entity(conn: sqlite3.Connection, entity_id: str) -> None:
         raise WritebackError(f"unknown entity {entity_id!r}")
     if row["status"] != "deprecated":
         raise WritebackError(f"entity {entity_id!r} is not deprecated")
+    maybe_snapshot(conn, f"restore {entity_id}")
     now = _now()
     with conn:
         conn.execute(
@@ -483,6 +489,7 @@ def deprecate_entity(conn: sqlite3.Connection, entity_id: str) -> None:
     row = conn.execute("SELECT entity_id FROM entities WHERE entity_id=?", (entity_id,)).fetchone()
     if row is None:
         raise WritebackError(f"unknown entity {entity_id!r}")
+    maybe_snapshot(conn, f"deprecate {entity_id}")
     now = _now()
     with conn:
         conn.execute(

@@ -62,6 +62,7 @@
   <div class="panel" id="retrieval" style="display:none"><h2>Retrieval inspector</h2></div>
   <div class="panel" id="conflicts"><h2>Open conflicts</h2><div class="dim">none</div></div>
   <div class="panel" id="motifs"><h2>Motifs (never canon)</h2><div class="dim">none</div></div>
+  <div class="panel" id="history"><h2>History</h2><div class="dim">none</div></div>
 </aside>
 <script>
 let HOME_MODE = false, LORE = null;
@@ -251,6 +252,24 @@ async function loadPanels(){
   const motifs = await api("/api/motifs");
   document.getElementById("motifs").innerHTML = "<h2>Motifs (never canon)</h2>" +
     (motifs.length ? motifs.map(f => factRow(f,false)).join("") : '<div class="dim">none</div>');
+
+  const snaps = await api("/api/snapshots");
+  document.getElementById("history").innerHTML = "<h2>History</h2>" +
+    '<div class="small dim">Each entry is the state just before an operation. Rolling back is itself undoable.</div>' +
+    (snaps.length ? snaps.map(s => {
+      const c = s.counts;
+      return `<div class="fact">
+        <span class="small">before <b>${esc(s.operation)}</b>
+          <span class="dim">(${c.stories}st ${c.entities}ent ${c.facts}fct${c.open_conflicts ? ", " + c.open_conflicts + "cf" : ""})</span></span>
+        <button class="small" onclick="rollback(${s.seq})">roll back here</button>
+      </div>`;
+    }).join("") : '<div class="dim">no snapshots yet</div>');
+}
+
+async function rollback(seq){
+  if (!confirm("Roll the lore back to this point? The current state is snapshotted first, so this is reversible.")) return;
+  try { await post(`/api/snapshots/${seq}/rollback`); await loadGraph(); }
+  catch (e){ alert("Rollback failed: " + e.message); }
 }
 
 document.getElementById("compileBtn").addEventListener("click", async () => {

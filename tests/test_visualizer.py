@@ -6,6 +6,7 @@ from invariant_checks import assert_invariants
 
 from lore_stack.db import connect, init_db
 from lore_stack.visualizer.app import create_app
+from lore_stack.writeback import manual_edit_fact
 
 
 @pytest.fixture
@@ -225,6 +226,37 @@ def test_home_mode_lore_lifecycle(home_client):
     assert client.get("/api/entities?lore=nope").status_code == 404
     assert client.get("/api/entities?lore=../evil").status_code == 400
     assert client.get("/api/entities?lore=production").get_json() == []
+
+
+def test_home_mode_snapshots_and_rollback(home_client):
+    from lore_stack.db import connect
+
+    client, home = home_client
+    client.post("/api/lores", json={"name": "production"})
+
+    # Seed two stories through a snapshot-enabled connection, then a bad edit.
+    conn = connect(home / "production.db", auto_snapshot=True)
+    ingest_fixture(conn, 1)
+    ingest_fixture(conn, 2)
+    manual_edit_fact(conn, entity_id="ent_boxwell", predicate="profession",
+                     object_literal="baker")
+    conn.close()
+
+    snaps = client.get("/api/snapshots?lore=production").get_json()
+    assert snaps, "expected snapshots from the seeded mutations"
+    # Newest snapshot precedes the bad edit.
+    target = snaps[0]["seq"]
+    assert snaps[0]["operation"].startswith("edit ent_boxwell")
+
+    resp = client.post(f"/api/snapshots/{target}/rollback?lore=production")
+    assert resp.status_code == 200
+
+    facts = client.get("/api/facts?entity=ent_boxwell&lore=production").get_json()
+    canon = {f["object_literal"] for f in facts
+             if f["predicate"] == "profession" and f["status"] == "canonical"}
+    assert canon == {"clockmaker"}  # the baker edit was undone
+
+    assert client.post("/api/snapshots/9999/rollback?lore=production").status_code == 404
 
 
 def test_home_mode_lores_are_isolated(home_client):
