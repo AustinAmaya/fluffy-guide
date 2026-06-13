@@ -37,7 +37,7 @@ add non-deterministic behavior (clocks, RNG, network) to the core.
 
 ```
 src/lore_stack/
-  db/            schema.sql (0001) + migration_000{2,3,4}.sql; predicates.json (registry seed)
+  db/            schema.sql (0001) + migration_000{2..6}.sql; predicates.json (registry seed)
   models/        delta.py — the LoreDelta / ClaimInput / WritebackReport contracts (Pydantic, strict)
   writeback/     engine.py — apply_delta, conservative canonization, manual edits, soft deletes
   registry.py    predicate registry: alias normalization + the closed-relationship guard
@@ -62,7 +62,9 @@ docs/USER_GUIDE.md   the task-oriented "how to do everything"
 - **All deletes are soft.** Status flips to `deprecated`; rows survive and stay
   recoverable. Hard `DELETE` lives only in test teardown.
 - **Canon is conservative.** Promotion needs ≥2 distinct stories; a contradiction
-  of canon opens an adjudication item and never overwrites. Motifs never promote.
+  of canon opens an adjudication item and never overwrites. Motifs never promote;
+  episodic predicates (`visits`) never promote. A new value for a single-valued
+  `state` fact (`lives_in`) opens a *supersession* proposal, not a contradiction.
 - **Relationships are a closed set of 11** child-legible predicates (`range:
   entity`): `family_of, friends_with, against, mentors, serves, leads, belongs_to,
   lives_in, visits, wants, linked_to`. An off-vocabulary entity-object claim is

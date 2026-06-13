@@ -106,10 +106,12 @@ the visualizer API. Live-model tests carry the `model` marker and are excluded.
 
 ## Schema: base + amendments
 
-`src/lore_stack/db/schema.sql` is migration 0001, plus later migrations 0002–0004
+`src/lore_stack/db/schema.sql` is migration 0001, plus later migrations 0002–0006
 (`db/migration_000*.sql`) layered on top. Amendments A1–A5 are in 0001; A6 (the
 predicate registry) is 0002; A7 (staging) is 0003; the `merge_suggestion`
-adjudication kind is 0004. The migration runner applies them in order and seeds
+adjudication kind is 0004; A8 (the `supersession` adjudication kind) is 0005; A9
+(chunk staleness — `derived_from_fact_ids` + a `stale` flag) is 0006. The migration
+runner applies them in order and seeds
 the registry idempotently; a pre-existing 0001-only database upgrades cleanly
 (tested). The 0001 amendments:
 
@@ -198,15 +200,24 @@ fact; delete = soft deprecate).
 One thin skill stub (`src/lore_stack/hermes/`) shells into the CLI. Hermes is a
 downstream consumer, not the owner; nothing in the core imports it.
 
-## Phase 2 (live adapter)
+## Live model adapters (opt-in)
 
-Exactly one seam is live: the **Extractor**, as
-`lore_stack_adapters.anthropic_extractor.AnthropicExtractor` — a separate
-top-level package the core never imports. It calls `claude-opus-4-8` with
-structured outputs (`client.messages.parse` against the same `LoreDelta`
-Pydantic contract), behind the unchanged `Extractor` protocol. Install with
-`pip install -e ".[anthropic]"`; requires `ANTHROPIC_API_KEY`. The parity test
-(`tests/test_phase2_parity.py`, marker `model`) feeds a fixed story through the
-live path and asserts the same DB state shape as test B plus the full invariant
-suite. The fakes remain the default everywhere; `pytest -m "not model"` is
-unaffected.
+Two seams can be driven by a real model. Both live in the separate
+`lore_stack_adapters` package the core never imports, and the deterministic fakes
+stay the default everywhere — `pytest -m "not model"` is unaffected.
+
+- **Extractor** — `lore_stack_adapters.anthropic_extractor.AnthropicExtractor`
+  calls `claude-opus-4-8` with structured outputs (`client.messages.parse` against
+  the `LoreDelta` contract), behind the unchanged `Extractor` protocol.
+  `pip install -e ".[anthropic]"`; requires `ANTHROPIC_API_KEY`.
+- **Embedder** — `lore_stack_adapters.openai_embedder.OpenAIEmbedder` calls OpenAI
+  `text-embedding-3-small` (1536-d), behind the `Embedder` protocol.
+  `pip install -e ".[embeddings]"`; requires `OPENAI_API_KEY`. Live and fake
+  embeddings coexist in one lore — `semantic_search` gates by the `model` column,
+  so they never cross — and the adapter raises retrieval's noise floor
+  (`semantic_floor`) for its tighter cosine spread. Use the same embedder to ingest
+  and to query.
+
+Parity tests (`tests/test_phase2_parity.py`, `tests/test_embedder_parity.py`,
+marker `model`) exercise the live paths and assert DB-shape + invariants; they are
+excluded from the gate and skip without their SDK / API key.

@@ -8,6 +8,8 @@ MIGRATIONS = [
     ("0002_predicates", "migration_0002_predicates.sql"),
     ("0003_staging", "migration_0003_staging.sql"),
     ("0004_merge_suggestions", "migration_0004_merge_suggestions.sql"),
+    ("0005_supersession", "migration_0005_supersession.sql"),
+    ("0006_chunk_staleness", "migration_0006_chunk_staleness.sql"),
 ]
 
 

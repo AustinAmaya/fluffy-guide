@@ -20,6 +20,9 @@ dev = [
 anthropic = [
     "anthropic>=0.40",
 ]
+embeddings = [
+    "openai>=1.0",
+]
 
 [project.scripts]
 lore-stack = "lore_stack.cli:main"
@@ -34,5 +37,17 @@ lore_stack = ["db/schema.sql", "visualizer/static/*", "hermes/*.md", "hermes/scr
 addopts = ["--strict-markers", "-ra"]
 markers = [
     "model: live or recorded model tests (excluded from the deterministic gate)",
+    "unit: focused single-module logic / validation tests",
+    "integration: multi-component, DB-driven flows",
+    "golden: byte-determinism / golden-file acceptance tests",
+    "migration: schema bootstrap and seeded-upgrade tests",
+    "property: Hypothesis property tests (derandomized for the gate)",
+    "smoke: end-to-end smoke checks",
+    "perf: performance / latency checks (lane reserved; excluded from the gate)",
+    "manual: tests that require manual setup or are run on demand",
+    "slow: long-running tests",
 ]
 testpaths = ["tests"]
+# Lanes are assigned by module in tests/conftest.py (pytest_collection_modifyitems),
+# so `pytest -m unit` / `-m integration` / etc. select without decorating every file.
+# The deterministic gate stays `pytest -m "not model"`.

@@ -19,12 +19,14 @@ from lore_stack.retrieval import gather_candidates
 from lore_stack.seams.embedder import FakeEmbedder
 from lore_stack.writeback import (
     WritebackError,
+    confirm_chunk_fresh,
     deprecate_chunk,
     deprecate_entity,
     deprecate_fact,
     manual_edit_fact,
     resolve_contradiction,
     resolve_merge_suggestion,
+    resolve_supersession,
     restore_entity,
 )
 
@@ -399,7 +401,15 @@ def create_app(db_path: str | Path | None = None, *, home: str | Path | None = N
         decision = body.get("decision", "")
         c = conn(auto_snapshot=True)
         try:
-            resolve_contradiction(c, item_id, decision)
+            # Same resolve action drives contradictions and supersessions; dispatch
+            # on the item's kind (both share the keep_existing/accept_proposed vocab).
+            kind = c.execute(
+                "SELECT item_kind FROM adjudication_queue WHERE item_id=?", (item_id,)
+            ).fetchone()
+            if kind is not None and kind["item_kind"] == "supersession":
+                resolve_supersession(c, item_id, decision)
+            else:
+                resolve_contradiction(c, item_id, decision)
         except WritebackError as exc:
             c.close()
             return jsonify({"error": str(exc)}), 400
@@ -420,6 +430,29 @@ def create_app(db_path: str | Path | None = None, *, home: str | Path | None = N
             return jsonify({"error": str(exc)}), 400
         c.close()
         return jsonify({"ok": True, "item_id": item_id, "kept": keep})
+
+    @app.get("/api/stale-chunks")
+    def stale_chunks():
+        c = conn()
+        rows = c.execute(
+            "SELECT chunk_id, title, insertion_lane, entity_id, derived_from_fact_ids"
+            " FROM lore_chunks WHERE stale=1 AND status IN ('provisional','canonical')"
+            " ORDER BY chunk_id"
+        ).fetchall()
+        out = [dict(r) for r in rows]
+        c.close()
+        return jsonify(out)
+
+    @app.post("/api/chunk/<chunk_id>/confirm")
+    def confirm_chunk_route(chunk_id):
+        c = conn(auto_snapshot=True)
+        try:
+            confirm_chunk_fresh(c, chunk_id)
+        except WritebackError as exc:
+            c.close()
+            return jsonify({"error": str(exc)}), 400
+        c.close()
+        return jsonify({"ok": True, "chunk_id": chunk_id})
 
     @app.get("/api/staged")
     def list_staged_route():

@@ -1,7 +1,6 @@
 """Test A: one command builds the full schema from empty."""
 from importlib import resources
 
-from conftest import ingest_fixture
 from invariant_checks import assert_invariants
 
 from lore_stack.cli import main
@@ -50,20 +49,39 @@ def test_init_db_cli_builds_schema(tmp_path, capsys):
     assert main(["init-db", "--db", str(db_path)]) == 0
 
 
-def test_migration_0002_upgrades_a_seeded_v1_db(tmp_path):
-    """A database stamped only at 0001 (data already present) upgrades to 0002
+def test_migration_upgrades_a_seeded_v1_db(tmp_path):
+    """A database stamped only at 0001, with data already present (written by the
+    old code, so none of the later columns), upgrades through the latest migration
     without losing rows, and gains the seeded registry."""
     db_path = tmp_path / "legacy.db"
     conn = connect(db_path)
 
-    # Build a 0001-only database by hand: apply just the first migration.
+    # Build a 0001-only database by hand: apply the first migration, then seed
+    # v1-shaped rows directly (the old engine wrote none of the post-0001 columns).
     schema = resources.files("lore_stack.db").joinpath("schema.sql").read_text(encoding="utf-8")
     conn.executescript(schema)
-    conn.execute(
-        "INSERT INTO schema_migrations (version, applied_at) VALUES ('0001_initial', 'then')"
+    conn.executescript(
+        """
+        INSERT INTO schema_migrations (version, applied_at) VALUES ('0001_initial', 'then');
+        INSERT INTO sources (source_id, source_kind, uri, checksum, created_at)
+          VALUES ('src_legacy', 'manual', NULL, NULL, 'then');
+        INSERT INTO entities (entity_id, kind, slug, display_name, status, summary,
+          description, canonical_confidence, created_from_story_id, created_at, updated_at)
+          VALUES ('ent_legacy', 'character', 'legacy', 'Legacy', 'canonical', 's', NULL,
+                  1.0, NULL, 'then', 'then');
+        INSERT INTO facts (fact_id, subject_entity_id, predicate, object_entity_id,
+          object_literal, confidence, status, first_supported_story_id,
+          last_supported_story_id, source_claim_id, manual_source_id, created_at, updated_at)
+          VALUES ('fct_legacy', 'ent_legacy', 'profession', NULL, 'clockmaker', 1.0,
+                  'canonical', NULL, NULL, NULL, 'src_legacy', 'then', 'then');
+        INSERT INTO lore_chunks (chunk_id, scope, entity_id, story_id, title, body,
+          activation_keys_json, retrieval_mode, insertion_lane, group_key, priority,
+          token_estimate, status, created_at, updated_at)
+          VALUES ('chk_legacy', 'entity', 'ent_legacy', NULL, 'Legacy card', 'A legacy chunk.',
+                  '[]', 'hybrid', 'character_card', NULL, 100, 5, 'canonical', 'then', 'then');
+        """
     )
     conn.commit()
-    ingest_fixture(conn, 1)  # real data under the old schema
     before = conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0]
     assert "predicates" not in {
         r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
@@ -79,4 +97,9 @@ def test_migration_0002_upgrades_a_seeded_v1_db(tmp_path):
     # Pre-existing data survived; registry is now present.
     assert conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0] == before
     assert conn.execute("SELECT COUNT(*) FROM predicates").fetchone()[0] > 0
+    # The 0006 columns were added without disturbing the legacy chunk.
+    chunk = conn.execute(
+        "SELECT stale, derived_from_fact_ids FROM lore_chunks WHERE chunk_id='chk_legacy'"
+    ).fetchone()
+    assert chunk["stale"] == 0 and chunk["derived_from_fact_ids"] is None
     assert_invariants(conn)

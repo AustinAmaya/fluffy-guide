@@ -214,14 +214,16 @@ def _apply_inner(conn, delta, checksum, story_text, source_kind, source_uri,
         entity_id = resolve_entity(conn, chunk.entity_slug) if chunk.entity_slug else None
         scope = "entity" if entity_id else "story"
         chunk_id = f"chk_{_short_hash(delta.story_id, str(idx), chunk.title)}"
+        derived = _resolve_derived_facts(conn, chunk.derived_from)
         conn.execute(
             "INSERT INTO lore_chunks (chunk_id, scope, entity_id, story_id, title, body,"
             " activation_keys_json, retrieval_mode, insertion_lane, group_key, priority,"
-            " token_estimate, status, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 'provisional', ?, ?)",
+            " token_estimate, status, derived_from_fact_ids, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 'provisional', ?, ?, ?)",
             (chunk_id, scope, entity_id, delta.story_id, chunk.title, chunk.body,
              json.dumps(chunk.activation_keys), chunk.retrieval_mode, chunk.insertion_lane,
-             chunk.priority, token_estimate(chunk.body), now, now),
+             chunk.priority, token_estimate(chunk.body),
+             json.dumps(derived) if derived else None, now, now),
         )
         report.chunks_created.append(chunk_id)
         if embedder is not None:
@@ -324,10 +326,14 @@ def _apply_claim(conn, story_id: str, idx: int, claim: ClaimInput,
             and match["first_supported_story_id"] != story_id
         )
         # A competing active value blocks promotion only for single-valued
-        # predicates; a multi-valued predicate (carries, visits) promotes each
-        # value on its own corroboration.
+        # predicates; a multi-valued attribute (carries) promotes each value on
+        # its own corroboration.
         has_active_sibling = any(f["status"] in ("canonical", "soft") for f in others)
         blocks_promotion = single_valued and has_active_sibling
+        # Episodic facts (visits) are story-anchored: they feed continuity/hooks and
+        # never harden into permanent canon, even when corroborated. (Manual edits
+        # stay authoritative -- this gate is only on the corroboration path.)
+        episodic = pred_info is not None and pred_info.persistence == "episodic"
         if (
             match["status"] == "soft"
             and claim.canonicality_hint == "candidate"
@@ -335,6 +341,7 @@ def _apply_claim(conn, story_id: str, idx: int, claim: ClaimInput,
             and (reviewed or new_conf >= PROMOTION_CONFIDENCE)  # reviewed: count-only
             and pred_info is not None  # only registered predicates auto-canonize
             and not blocks_promotion
+            and not episodic
         ):
             conn.execute(
                 "UPDATE facts SET status='canonical', updated_at=? WHERE fact_id=?",
@@ -345,10 +352,15 @@ def _apply_claim(conn, story_id: str, idx: int, claim: ClaimInput,
 
     canonical_sibling = next((f for f in others if f["status"] == "canonical"), None)
     if canonical_sibling is not None and single_valued:
-        # Contradiction of canon on a single-valued predicate: open adjudication,
-        # never overwrite. (Multi-valued predicates fall through and coexist.)
+        # A new value against a canonical single-valued fact. Fork on persistence:
+        # a `state` predicate (lives_in -- you can move) opens a SUPERSESSION
+        # proposal (accepting canonizes the new value and deprecates the old); a
+        # `permanent` predicate (profession, species) opens a CONTRADICTION (canon
+        # never moves on its own). Either way canon is never overwritten here.
+        # (Multi-valued predicates fall through and coexist.)
         write_claim("needs_review", subject_id)
         item_id = f"adj_{_short_hash(claim_id)}"
+        is_supersession = pred_info is not None and pred_info.persistence == "state"
         payload = {
             "claim_id": claim_id,
             "subject_entity_id": subject_id,
@@ -360,12 +372,17 @@ def _apply_claim(conn, story_id: str, idx: int, claim: ClaimInput,
             "existing_object_literal": canonical_sibling["object_literal"],
             "story_id": story_id,
         }
+        reason = (
+            f"story proposes a new value for {predicate!r}, superseding canonical"
+            f" fact {canonical_sibling['fact_id']}"
+            if is_supersession
+            else f"claim contradicts canonical fact {canonical_sibling['fact_id']}"
+            f" on predicate {predicate!r}"
+        )
         conn.execute(
             "INSERT INTO adjudication_queue (item_id, item_kind, reason, payload_json,"
-            " status, created_at) VALUES (?, 'claim', ?, ?, 'open', ?)",
-            (item_id,
-             f"claim contradicts canonical fact {canonical_sibling['fact_id']}"
-             f" on predicate {predicate!r}",
+            " status, created_at) VALUES (?, ?, ?, ?, 'open', ?)",
+            (item_id, "supersession" if is_supersession else "claim", reason,
              json.dumps(payload), now),
         )
         report.adjudications_opened.append(item_id)
@@ -475,6 +492,46 @@ def _suggest_merges(conn, subject_id, predicate, new_fact_id, object_entity_id,
     report.merge_suggestions_opened.append(item_id)
 
 
+def _resolve_derived_facts(conn, refs) -> list[str]:
+    """Resolve each (subject_slug, predicate) chunk ref to the current active fact
+    ids on that pair, so the chunk can be flagged stale if any is later deprecated.
+    Chunks are applied after claims, so facts from the same delta already exist."""
+    from lore_stack import registry  # lazy import: breaks the engine<->registry cycle
+
+    fact_ids: list[str] = []
+    for ref in refs:
+        subject_id = resolve_entity(conn, ref.subject_slug)
+        if subject_id is None:
+            continue
+        pred_info = registry.lookup(conn, ref.predicate)
+        predicate = pred_info.predicate_id if pred_info else normalize(ref.predicate)
+        for row in conn.execute(
+            "SELECT fact_id FROM facts WHERE subject_entity_id=? AND predicate=?"
+            " AND status IN ('canonical','soft') ORDER BY fact_id",
+            (subject_id, predicate),
+        ):
+            fact_ids.append(row["fact_id"])
+    return fact_ids
+
+
+def _stale_chunks_for_facts(conn, fact_ids, now) -> None:
+    """Flag active chunks stale when any fact they derive from is deprecated or
+    superseded. Stale chunks drop out of compilation (retrieval excludes them) but
+    survive for the operator to rewrite-or-confirm."""
+    fact_set = {fid for fid in fact_ids if fid}
+    if not fact_set:
+        return
+    for row in conn.execute(
+        "SELECT chunk_id, derived_from_fact_ids FROM lore_chunks"
+        " WHERE derived_from_fact_ids IS NOT NULL AND stale = 0"
+    ).fetchall():
+        if set(json.loads(row["derived_from_fact_ids"])) & fact_set:
+            conn.execute(
+                "UPDATE lore_chunks SET stale=1, updated_at=? WHERE chunk_id=?",
+                (now, row["chunk_id"]),
+            )
+
+
 # --- human-authoritative paths (the only sanctioned invariant carve-outs) ---
 
 def manual_edit_fact(
@@ -538,11 +595,15 @@ def manual_edit_fact(
             " VALUES (?, 'manual', ?, NULL, ?)",
             (source_id, uri, now),
         )
+        deprecated = [r["fact_id"] for r in conn.execute(
+            "SELECT fact_id FROM facts WHERE subject_entity_id=? AND predicate=?"
+            " AND status IN ('canonical','soft')", (entity_id, predicate))]
         conn.execute(
             "UPDATE facts SET status='deprecated', updated_at=? WHERE subject_entity_id=?"
             " AND predicate=? AND status IN ('canonical','soft')",
             (now, entity_id, predicate),
         )
+        _stale_chunks_for_facts(conn, deprecated, now)
         fact_id = f"fct_{_short_hash('manual', source_id, entity_id, predicate)}"
         conn.execute(
             "INSERT INTO facts (fact_id, subject_entity_id, predicate, object_entity_id,"
@@ -579,6 +640,7 @@ def resolve_merge_suggestion(conn: sqlite3.Connection, item_id: str, keep_fact_i
             "UPDATE facts SET status='deprecated', updated_at=? WHERE fact_id=? AND status != 'deprecated'",
             (now, drop_fact_id),
         )
+        _stale_chunks_for_facts(conn, [drop_fact_id], now)
         payload["resolution"] = {"kept": keep_fact_id, "merged": drop_fact_id}
         conn.execute(
             "UPDATE adjudication_queue SET status='resolved', payload_json=? WHERE item_id=?",
@@ -635,6 +697,61 @@ def resolve_contradiction(conn: sqlite3.Connection, item_id: str, decision: str)
         )
 
 
+def resolve_supersession(conn: sqlite3.Connection, item_id: str, decision: str) -> None:
+    """Operator resolution of a supersession proposal (item_kind='supersession').
+
+    'accept_proposed' makes the new value canonical via the authoritative
+    manual-edit path (which deprecates the prior canonical fact) and records
+    `superseded_by` lineage on the item. 'keep_existing' dismisses it, canon
+    unchanged. Same decision vocabulary as resolve_contradiction, so the
+    visualizer's one resolve action drives both.
+    """
+    if decision not in ("keep_existing", "accept_proposed"):
+        raise WritebackError("decision must be 'keep_existing' or 'accept_proposed'")
+    item = conn.execute(
+        "SELECT payload_json, status, item_kind FROM adjudication_queue WHERE item_id=?",
+        (item_id,),
+    ).fetchone()
+    if item is None or item["item_kind"] != "supersession":
+        raise WritebackError(f"no supersession {item_id!r}")
+    if item["status"] != "open":
+        raise WritebackError(f"supersession {item_id!r} is already {item['status']}")
+    payload = json.loads(item["payload_json"])
+    now = _now()
+
+    if decision == "keep_existing":
+        maybe_snapshot(conn, f"keep existing ({item_id})")
+        payload["resolution"] = {"decision": "keep_existing"}
+        with conn:
+            conn.execute(
+                "UPDATE adjudication_queue SET status='dismissed', payload_json=?"
+                " WHERE item_id=?",
+                (json.dumps(payload), item_id),
+            )
+        return
+
+    # accept_proposed: the new value supersedes the old (deprecated by the edit).
+    new_fact_id = manual_edit_fact(
+        conn,
+        entity_id=payload["subject_entity_id"],
+        predicate=payload["predicate"],
+        object_literal=payload.get("proposed_object_literal"),
+        object_entity_id=payload.get("proposed_object_entity_id"),
+    )
+    payload["resolution"] = {
+        "decision": "accept_proposed",
+        "new_fact_id": new_fact_id,
+        "superseded_fact_id": payload.get("existing_fact_id"),
+        "superseded_by": new_fact_id,
+    }
+    with conn:
+        conn.execute(
+            "UPDATE adjudication_queue SET status='resolved', payload_json=?"
+            " WHERE item_id=?",
+            (json.dumps(payload), item_id),
+        )
+
+
 def deprecate_fact(conn: sqlite3.Connection, fact_id: str) -> None:
     row = conn.execute("SELECT fact_id FROM facts WHERE fact_id=?", (fact_id,)).fetchone()
     if row is None:
@@ -645,6 +762,7 @@ def deprecate_fact(conn: sqlite3.Connection, fact_id: str) -> None:
         conn.execute(
             "UPDATE facts SET status='deprecated', updated_at=? WHERE fact_id=?", (now, fact_id)
         )
+        _stale_chunks_for_facts(conn, [fact_id], now)
 
 
 def deprecate_chunk(conn: sqlite3.Connection, chunk_id: str) -> None:
@@ -657,6 +775,21 @@ def deprecate_chunk(conn: sqlite3.Connection, chunk_id: str) -> None:
         conn.execute(
             "UPDATE lore_chunks SET status='deprecated', updated_at=? WHERE chunk_id=?",
             (now, chunk_id),
+        )
+
+
+def confirm_chunk_fresh(conn: sqlite3.Connection, chunk_id: str) -> None:
+    """Operator confirms a stale chunk's prose still reads true despite the fact
+    change: clear the stale flag so it returns to compilation. (The alternative is
+    to deprecate it and author a replacement.)"""
+    row = conn.execute("SELECT chunk_id FROM lore_chunks WHERE chunk_id=?", (chunk_id,)).fetchone()
+    if row is None:
+        raise WritebackError(f"unknown chunk {chunk_id!r}")
+    maybe_snapshot(conn, f"confirm fresh {chunk_id}")
+    now = _now()
+    with conn:
+        conn.execute(
+            "UPDATE lore_chunks SET stale=0, updated_at=? WHERE chunk_id=?", (now, chunk_id)
         )
 
 
@@ -703,11 +836,15 @@ def deprecate_entity(conn: sqlite3.Connection, entity_id: str) -> None:
             "UPDATE entities SET status='deprecated', updated_at=? WHERE entity_id=?",
             (now, entity_id),
         )
+        deprecated = [r["fact_id"] for r in conn.execute(
+            "SELECT fact_id FROM facts WHERE (subject_entity_id=? OR object_entity_id=?)"
+            " AND status != 'deprecated'", (entity_id, entity_id))]
         conn.execute(
             "UPDATE facts SET status='deprecated', updated_at=?"
             " WHERE (subject_entity_id=? OR object_entity_id=?) AND status != 'deprecated'",
             (now, entity_id, entity_id),
         )
+        _stale_chunks_for_facts(conn, deprecated, now)
         conn.execute(
             "UPDATE lore_chunks SET status='deprecated', updated_at=?"
             " WHERE entity_id=? AND status != 'deprecated'",

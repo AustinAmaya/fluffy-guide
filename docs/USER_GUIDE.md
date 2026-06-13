@@ -34,6 +34,21 @@ four example worlds and opens the visualizer:
 powershell -ExecutionPolicy Bypass -File demo.ps1
 ```
 
+### Live model adapters (opt-in)
+
+By default everything runs on deterministic fakes — no API keys, no network. Two
+seams can be switched to a real model; both are opt-in and both leave the
+deterministic gate on the fakes:
+
+- **Extraction:** `pip install lore-stack[anthropic]`, set `ANTHROPIC_API_KEY`, and
+  use `lore_stack_adapters.anthropic_extractor.AnthropicExtractor`.
+- **Embeddings:** `pip install lore-stack[embeddings]`, set `OPENAI_API_KEY`, and
+  pass `lore_stack_adapters.openai_embedder.OpenAIEmbedder()` wherever an embedder
+  is taken — e.g. `apply_delta(..., embedder=OpenAIEmbedder())` and
+  `compile_context(..., embedder=OpenAIEmbedder())`. Live and fake embeddings
+  coexist in one lore (retrieval gates by model name), so use the *same* embedder
+  to ingest and to query.
+
 ---
 
 ## 2. Core concepts
@@ -93,6 +108,10 @@ multi-valued:
 | `visits` | "goes to / travels to a place" | visitor → place |
 | `wants` | "really wants / is after a thing or person" | wanter → wanted |
 | `linked_to` | catch-all: "connected some other way" (only if none fit) | symmetric |
+
+Two carry special behavior from their persistence class: `lives_in` is
+single-valued and changeable, so a new home *supersedes* the old (see §8); `visits`
+is episodic — story-anchored, it never hardens into permanent canon.
 
 Aliases normalize in automatically (`resents` → `against`, `friend_of`/`trusts` →
 `friends_with`, `resides_in` → `lives_in`, `apprentices_to`/`taught_by` →
@@ -235,22 +254,34 @@ are a closed set.
 
 ---
 
-## 8. Conflicts and merge suggestions
+## 8. Conflicts, supersessions, and merge suggestions
 
-Two ways the system asks for a human decision, both surfaced in the visualizer's
+Three ways the system asks for a human decision, all surfaced in the visualizer's
 **Conflicts** panel (and via `inspect conflicts`):
 
 - **Contradiction** — a story asserts a value that conflicts with a canonical
-  single-valued fact (e.g. "Boxwell is a baker" vs canon "clockmaker"). Canon is
-  untouched; you resolve by keeping the existing value or accepting the proposed
-  one (which flips canon via the authoritative edit path).
+  *permanent* single-valued fact (e.g. "Boxwell is a baker" vs canon "clockmaker").
+  Canon is untouched; resolve by keeping the existing value or accepting the
+  proposed one (which deprecates the old via the authoritative edit path).
+- **Supersession** — a story asserts a new value for a *changeable* (`state`)
+  single-valued fact, like `lives_in` (someone moved). Instead of a contradiction,
+  a supersession proposal opens; accepting canonizes the new value, deprecates the
+  old, and records `superseded_by` lineage. Same keep/accept resolution.
 - **Merge suggestion** — a new soft fact's object is embedding-similar (cosine ≥
   0.5) to an existing value on the same subject+predicate (e.g. "cedar tool case"
-  ~ "a cedar case of tools"). Never auto-merged; you pick which value survives and
-  the other becomes deprecated history.
+  ~ "a cedar case of tools"). Never auto-merged; pick which value survives and the
+  other becomes deprecated history.
 
-Both resolve with one click in the UI, or through the API (`POST
-/api/conflicts/<id>/resolve`, `POST /api/merge/<id>/resolve`).
+Resolve with one click in the UI, or through the API (`POST
+/api/conflicts/<id>/resolve` for contradictions and supersessions, `POST
+/api/merge/<id>/resolve` for merges).
+
+**Stale chunks.** A chunk can declare the facts it derives from (`derived_from`, by
+subject + predicate). When a source fact is later deprecated or superseded, the
+chunk is flagged **stale**: held out of compiled context (so prose never silently
+narrates an outdated fact) and surfaced in the **Stale chunks** panel, where you
+confirm it still reads true (clears the flag, `POST /api/chunk/<id>/confirm`) or
+rewrite it.
 
 ---
 

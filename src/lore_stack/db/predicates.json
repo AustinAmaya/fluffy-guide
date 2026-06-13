@@ -58,7 +58,7 @@
   {
     "predicate_id": "lives_in",
     "aliases": ["resides_in", "lives_at", "home_is", "dwells_in", "based_in", "from", "located_in", "inside", "part_of_place"],
-    "cardinality": "multi",
+    "cardinality": "single",
     "persistence": "state",
     "range": "entity",
     "symmetry": "directed"

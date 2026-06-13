@@ -80,6 +80,7 @@
   <div class="panel" id="context" style="display:none"><h2>Compiled context preview</h2></div>
   <div class="panel" id="retrieval" style="display:none"><h2>Retrieval inspector</h2></div>
   <div class="panel" id="conflicts"><h2>Open conflicts</h2><div class="dim">none</div></div>
+  <div class="panel" id="staleChunks"><h2>Stale chunks</h2><div class="dim">none</div></div>
   <div class="panel" id="motifs"><h2>Motifs (never canon)</h2><div class="dim">none</div></div>
   <div class="panel" id="history"><h2>History</h2><div class="dim">none</div></div>
 </aside>
@@ -418,22 +419,28 @@ async function discardStage(sid){
 async function loadPanels(){
   await loadInbox();
   const conflicts = await api("/api/conflicts");
-  const contradictions = conflicts.filter(c => c.payload.kind !== "merge_suggestion");
+  const supersessions = conflicts.filter(c => c.item_kind === "supersession");
+  const contradictions = conflicts.filter(c =>
+    c.item_kind !== "supersession" && c.payload.kind !== "merge_suggestion");
   const merges = conflicts.filter(c => c.payload.kind === "merge_suggestion");
+  const proposedOf = c => c.payload.proposed_object_literal ?? c.payload.proposed_object_entity_id ?? "?";
+  const existingOf = c => c.payload.existing_object_literal ?? c.payload.existing_object_entity_id ?? "?";
+  const keepUse = c => `<div style="margin-top:4px">
+      <button class="small" onclick="resolveConflict('${esc(c.item_id)}','keep_existing')">keep "${esc(existingOf(c))}"</button>
+      <button class="small" onclick="resolveConflict('${esc(c.item_id)}','accept_proposed')">use "${esc(proposedOf(c))}"</button>
+    </div>`;
   document.getElementById("conflicts").innerHTML = "<h2>Open conflicts</h2>" +
-    '<div class="small dim">A new story contradicted established canon. Keep what canon already holds, or accept the new value (which deprecates the old).</div>' +
-    (contradictions.length ? contradictions.map(c => {
-      const proposed = c.payload.proposed_object_literal ?? c.payload.proposed_object_entity_id ?? "?";
-      const existing = c.payload.existing_object_literal ?? c.payload.existing_object_entity_id ?? "?";
-      return `<div class="fact" style="flex-direction:column; align-items:flex-start">
-        <div class="small"><b>${esc(c.payload.predicate)}</b>:
-          canon says <b>${esc(existing)}</b>, a story proposed <b>${esc(proposed)}</b></div>
-        <div style="margin-top:4px">
-          <button class="small" onclick="resolveConflict('${esc(c.item_id)}','keep_existing')">keep "${esc(existing)}"</button>
-          <button class="small" onclick="resolveConflict('${esc(c.item_id)}','accept_proposed')">use "${esc(proposed)}"</button>
-        </div>
-      </div>`;
-    }).join("") : '<div class="dim">none</div>') +
+    '<div class="small dim">A new story contradicted established canon (a permanent fact). Keep what canon holds, or accept the new value (which deprecates the old).</div>' +
+    (contradictions.length ? contradictions.map(c => `<div class="fact" style="flex-direction:column; align-items:flex-start">
+        <div class="small"><b>${esc(c.payload.predicate)}</b>: canon says <b>${esc(existingOf(c))}</b>, a story proposed <b>${esc(proposedOf(c))}</b></div>
+        ${keepUse(c)}
+      </div>`).join("") : '<div class="dim">none</div>') +
+    "<h2 style='margin-top:10px'>Supersessions (something changed)</h2>" +
+    '<div class="small dim">A changeable fact (e.g. where someone lives) got a new value. Accept to update canon — the old value becomes history — or keep the old.</div>' +
+    (supersessions.length ? supersessions.map(c => `<div class="fact" style="flex-direction:column; align-items:flex-start">
+        <div class="small"><b>${esc(c.payload.predicate)}</b>: was <b>${esc(existingOf(c))}</b>, now <b>${esc(proposedOf(c))}</b></div>
+        ${keepUse(c)}
+      </div>`).join("") : '<div class="dim">none</div>') +
     "<h2 style='margin-top:10px'>Merge suggestions</h2>" +
     '<div class="small dim">Possible duplicate values. Pick the one to keep; the other becomes history.</div>' +
     (merges.length ? merges.map(c => `
@@ -441,6 +448,16 @@ async function loadPanels(){
         <div class="small dim">${esc(c.payload.predicate)} (cosine ${c.payload.cosine})</div>
         <button class="small" onclick="resolveMerge('${esc(c.item_id)}','${esc(c.payload.fact_a)}')">keep "${esc(c.payload.fact_a_text)}"</button>
         <button class="small" onclick="resolveMerge('${esc(c.item_id)}','${esc(c.payload.fact_b)}')">keep "${esc(c.payload.fact_b_text)}"</button>
+      </div>`).join("") : '<div class="dim">none</div>');
+
+  const staleC = await api("/api/stale-chunks");
+  document.getElementById("staleChunks").innerHTML = "<h2>Stale chunks</h2>" +
+    '<div class="small dim">A fact these chunks were written from changed. Confirm the prose still reads true, or rewrite it. Stale chunks are held out of compiled context until confirmed.</div>' +
+    (staleC.length ? staleC.map(ch => `<div class="fact" style="flex-direction:column; align-items:flex-start">
+        <div class="small"><b>${esc(ch.title || ch.chunk_id)}</b> <span class="dim">(${esc(ch.insertion_lane)})</span></div>
+        <div style="margin-top:4px">
+          <button class="small" onclick="confirmChunk('${esc(ch.chunk_id)}')">still accurate</button>
+        </div>
       </div>`).join("") : '<div class="dim">none</div>');
   const motifs = await api("/api/motifs");
   document.getElementById("motifs").innerHTML = "<h2>Motifs (never canon)</h2>" +
@@ -500,6 +517,12 @@ async function resolveConflict(itemId, decision){
   try { await post(`/api/conflicts/${encodeURIComponent(itemId)}/resolve`, {decision});
         await loadGraph(); }
   catch (e){ alert("Resolve failed: " + e.message); }
+}
+
+async function confirmChunk(chunkId){
+  try { await post(`/api/chunk/${encodeURIComponent(chunkId)}/confirm`, {});
+        await loadGraph(); }
+  catch (e){ alert("Confirm failed: " + e.message); }
 }
 
 async function rollback(seq){

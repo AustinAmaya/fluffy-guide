@@ -54,6 +54,14 @@ def test_read_endpoints(client_db):
     assert any("exact_name" in c["reasons"] for c in cands)
 
 
+def test_stale_chunks_endpoint(client_db):
+    client, _ = client_db
+    # The seeded set has no fact-linked chunks, so nothing is stale.
+    assert client.get("/api/stale-chunks").get_json() == []
+    # Confirming an unknown chunk is a clean 400, not a crash.
+    assert client.post("/api/chunk/chk_nope/confirm").status_code == 400
+
+
 def test_query_context_endpoint(client_db):
     client, _ = client_db
     resp = client.post("/api/query_context", json={"query": "Tell another story with Boxwell"})

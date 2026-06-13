@@ -50,6 +50,19 @@ class ClaimInput(BaseModel):
         return self
 
 
+class DerivedFactRef(BaseModel):
+    """A (subject, predicate) pointer to the fact(s) a chunk's prose derives from.
+
+    Resolved to concrete fact ids at ingest; if any resolved fact is later
+    deprecated or superseded, the chunk is flagged stale (dropped from compilation,
+    surfaced for rewrite). Refs the chunk by (subject, predicate) -- not by fact id
+    -- because fact ids are content-derived and unknown to the author up front.
+    """
+    model_config = ConfigDict(extra="forbid")
+    subject_slug: str = Field(min_length=1, max_length=200)
+    predicate: str = Field(min_length=1, max_length=200)
+
+
 class ChunkInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     title: str = Field(min_length=1, max_length=500)
@@ -59,6 +72,7 @@ class ChunkInput(BaseModel):
     insertion_lane: InsertionLane
     priority: int = Field(default=100, ge=0, le=10_000)
     entity_slug: Optional[str] = Field(default=None, max_length=200)
+    derived_from: list[DerivedFactRef] = Field(default_factory=list, max_length=100)
 
 
 class LoreDelta(BaseModel):

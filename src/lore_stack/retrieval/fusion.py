@@ -107,6 +107,10 @@ def gather_candidates(
         cosine_scores = dict(
             semantic_search(conn, qvec, model=getattr(embedder, "model_name", "unknown"))
         )
+    # The noise floor is tuned for the 256-d FakeEmbedder; a live embedder with a
+    # tighter cosine distribution can raise it by declaring `semantic_floor`. The
+    # fake has no such attribute, so the default (and the gate's output) is unchanged.
+    semantic_floor = getattr(embedder, "semantic_floor", SEMANTIC_FLOOR)
 
     max_story_seq = conn.execute("SELECT COALESCE(MAX(rowid), 1) FROM story_runs").fetchone()[0]
     story_seq = {
@@ -117,7 +121,8 @@ def gather_candidates(
     candidates: dict[str, Candidate] = {}
     placeholders = ",".join("?" * len(ACTIVE_CHUNK_STATUSES))
     for row in conn.execute(
-        f"SELECT * FROM lore_chunks WHERE status IN ({placeholders}) ORDER BY chunk_id",
+        f"SELECT * FROM lore_chunks WHERE status IN ({placeholders}) AND stale = 0"
+        " ORDER BY chunk_id",
         ACTIVE_CHUNK_STATUSES,
     ):
         cand = Candidate(chunk_id=row["chunk_id"], row=row)
@@ -142,7 +147,7 @@ def gather_candidates(
         if fts_score:
             cand.reasons.append("fts")
         cosine = cosine_scores.get(row["chunk_id"], 0.0)
-        if cosine < SEMANTIC_FLOOR:
+        if cosine < semantic_floor:
             cosine = 0.0  # below the noise floor -> not a semantic signal at all
         if cosine > 0:
             cand.reasons.append("semantic")

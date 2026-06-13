@@ -25,6 +25,7 @@ def fts_search(conn: sqlite3.Connection, query: str, limit: int = 50) -> list[tu
         "SELECT c.chunk_id FROM lore_chunks_fts f"
         " JOIN lore_chunks c ON c.rowid = f.rowid"
         f" WHERE lore_chunks_fts MATCH ? AND c.status IN ({','.join('?' * len(ACTIVE_CHUNK_STATUSES))})"
+        " AND c.stale = 0"
         " ORDER BY bm25(lore_chunks_fts), c.chunk_id LIMIT ?",
         (match, *ACTIVE_CHUNK_STATUSES, limit),
     ).fetchall()

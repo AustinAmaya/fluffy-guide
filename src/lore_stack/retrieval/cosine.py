@@ -21,6 +21,7 @@ def semantic_search(
         "SELECT e.chunk_id, e.vector_blob, e.dimensions FROM chunk_embeddings e"
         " JOIN lore_chunks c ON c.chunk_id = e.chunk_id"
         f" WHERE e.model = ? AND c.status IN ({','.join('?' * len(ACTIVE_CHUNK_STATUSES))})"
+        " AND c.stale = 0"
         " ORDER BY e.chunk_id",
         (model, *ACTIVE_CHUNK_STATUSES),
     ).fetchall()

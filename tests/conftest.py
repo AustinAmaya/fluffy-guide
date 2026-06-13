@@ -57,3 +57,26 @@ def db_seeded(db):
     for n in (1, 2, 3, 4):
         ingest_fixture(db, n)
     return db
+
+
+# --- marker taxonomy (V&V test lanes) ---------------------------------------
+# Each test file maps to exactly one lane; assign it by module here rather than
+# decorating all ~20 files. Markers are declared in pyproject [tool.pytest...].
+# The deterministic gate is `pytest -m "not model"`; the other lanes let an
+# operator (or CI) select a slice, e.g. `pytest -m migration`.
+_LANE_BY_MODULE = {
+    "test_a_bootstrap": "migration",
+    "test_golden": "golden",
+    "test_property": "property",
+    "test_adversarial": "unit",
+    "test_registry": "unit",
+    "test_relationship_ontology": "unit",
+    "test_phase2_parity": "model",  # already self-marks; kept here for the record
+}
+
+
+def pytest_collection_modifyitems(items):
+    for item in items:
+        lane = _LANE_BY_MODULE.get(Path(str(item.fspath)).stem, "integration")
+        if lane not in item.keywords:  # don't double-mark self-marked modules
+            item.add_marker(getattr(pytest.mark, lane))
