@@ -6,7 +6,6 @@ soft deprecate) are the ONLY paths that bypass normal canonization, and both
 preserve history.
 """
 import json
-import re
 import sqlite3
 from pathlib import Path
 
@@ -29,10 +28,9 @@ from lore_stack.writeback import (
     restore_entity,
 )
 
-STATIC_DIR = Path(__file__).parent / "static"
+from lore_stack.lores import LORE_NAME_RE, LoreError, copy_lore  # noqa: E402
 
-# Lore names become filenames: strict allowlist, no separators, no traversal.
-LORE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 class LoreSelectionError(Exception):
@@ -191,15 +189,24 @@ def create_app(db_path: str | Path | None = None, *, home: str | Path | None = N
 
     @app.post("/api/lores")
     def create_lore():
+        """Create a lore: empty by default, or a copy of an existing lore when the
+        body carries `copy_from`."""
         if home_dir is None:
             return jsonify({"error": "server is running in single-database mode"}), 404
         body = request.get_json(silent=True) or {}
         name = body.get("name", "")
+        copy_from = body.get("copy_from")
         if not isinstance(name, str) or not LORE_NAME_RE.match(name):
             return jsonify({"error": "lore name must match [A-Za-z0-9][A-Za-z0-9_-]{0,63}"}), 400
         path = home_dir / f"{name}.db"
         if path.exists():
             return jsonify({"error": f"lore {name!r} already exists"}), 409
+        if copy_from:
+            try:
+                copy_lore(home_dir, copy_from, name)
+            except LoreError as exc:
+                return jsonify({"error": str(exc)}), 400
+            return jsonify({"ok": True, "name": name, "copied_from": copy_from})
         c = _open(path)
         init_db(c)
         c.close()

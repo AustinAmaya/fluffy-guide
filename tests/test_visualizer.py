@@ -367,6 +367,36 @@ def test_home_mode_snapshots_and_rollback(home_client):
     assert client.post("/api/snapshots/9999/rollback?lore=production").status_code == 404
 
 
+def test_copy_lore_is_independent(home_client):
+    from lore_stack.db import connect
+
+    client, home = home_client
+    client.post("/api/lores", json={"name": "source"})
+    conn = connect(home / "source.db")
+    ingest_fixture(conn, 1)  # Boxwell + the Brambled Inn
+    conn.close()
+
+    # Copy via the API.
+    resp = client.post("/api/lores", json={"name": "source-copy", "copy_from": "source"})
+    assert resp.status_code == 200 and resp.get_json()["copied_from"] == "source"
+
+    # The copy has the same entities...
+    src_ents = {e["slug"] for e in client.get("/api/entities?lore=source").get_json()}
+    copy_ents = {e["slug"] for e in client.get("/api/entities?lore=source-copy").get_json()}
+    assert copy_ents == src_ents and "boxwell" in copy_ents
+
+    # ...but is independent: editing the copy does not change the source.
+    client.post("/api/entity/ent_boxwell/edit?lore=source-copy",
+                json={"predicate": "profession", "value": "horologist"})
+    src_facts = client.get("/api/facts?entity=ent_boxwell&lore=source").get_json()
+    assert not any(f["object_literal"] == "horologist" for f in src_facts)
+
+    # Copy errors: unknown source, existing destination.
+    assert client.post("/api/lores", json={"name": "x", "copy_from": "nope"}).status_code == 400
+    assert client.post("/api/lores",
+                       json={"name": "source", "copy_from": "source-copy"}).status_code == 409
+
+
 def test_home_mode_lores_are_isolated(home_client):
     from lore_stack.db import connect
 

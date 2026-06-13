@@ -312,7 +312,7 @@ def _cmd_serve(args) -> int:
 
 
 def _cmd_lores(args) -> int:
-    from lore_stack.visualizer.app import LORE_NAME_RE
+    from lore_stack.lores import LORE_NAME_RE, LoreError, copy_lore
 
     home = Path(args.home)
     if args.action == "create":
@@ -328,6 +328,17 @@ def _cmd_lores(args) -> int:
         init_db(conn)
         conn.close()
         print(f"created lore {args.name!r} at {path}")
+        return 0
+    if args.action == "copy":
+        if not args.from_name or not args.to_name:
+            print("copy requires --from and --to", file=sys.stderr)
+            return 1
+        try:
+            copy_lore(home, args.from_name, args.to_name)
+        except LoreError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(f"copied lore {args.from_name!r} -> {args.to_name!r} (fresh history)")
         return 0
     # list
     if not home.exists():
@@ -420,10 +431,12 @@ def main(argv=None) -> int:
     p.add_argument("--port", type=int, default=8377)
     p.set_defaults(func=_cmd_serve)
 
-    p = sub.add_parser("lores", help="list or create lores in a lore home directory")
-    p.add_argument("action", choices=["list", "create"])
+    p = sub.add_parser("lores", help="list, create, or copy lores in a lore home directory")
+    p.add_argument("action", choices=["list", "create", "copy"])
     p.add_argument("--home", required=True)
     p.add_argument("--name", default=None)
+    p.add_argument("--from", dest="from_name", default=None, help="source lore for copy")
+    p.add_argument("--to", dest="to_name", default=None, help="destination lore for copy")
     p.set_defaults(func=_cmd_lores)
 
     p = sub.add_parser("snapshot", help="manage point-in-time snapshots of a lore")

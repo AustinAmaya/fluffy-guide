@@ -58,6 +58,7 @@
   <select id="loreSel" style="display:none; background:var(--panel); color:var(--fg);
           border:1px solid var(--line); border-radius:4px; padding:6px 8px;"></select>
   <button id="newLoreBtn" style="display:none">+ lore</button>
+  <button id="copyLoreBtn" style="display:none">copy lore</button>
   <input id="query" placeholder='Query, e.g. "Tell another story with Boxwell"'>
   <button id="compileBtn">Compile context</button>
   <button id="exportBtn">Export JSON</button>
@@ -97,7 +98,8 @@ async function initLores(){
   HOME_MODE = true;
   const sel = document.getElementById("loreSel");
   const btn = document.getElementById("newLoreBtn");
-  sel.style.display = ""; btn.style.display = "";
+  const copyBtn = document.getElementById("copyLoreBtn");
+  sel.style.display = ""; btn.style.display = ""; copyBtn.style.display = "";
   const lores = await r.json();
   const names = lores.map(l => l.name);
   sel.innerHTML = lores.map(l =>
@@ -107,16 +109,23 @@ async function initLores(){
   LORE = names.includes(saved) ? saved : names[0] || null;
   if (LORE) sel.value = LORE;
   sel.onchange = () => { LORE = sel.value; localStorage.setItem("lore", LORE); loadGraph(); };
-  btn.onclick = async () => {
-    const name = prompt("New lore name (letters, digits, - and _):");
-    if (!name) return;
+  async function makeLore(body, errLabel){
     try {
       await fetch("/api/lores", {method:"POST", headers:{"Content-Type":"application/json"},
-                                 body: JSON.stringify({name})})
+                                 body: JSON.stringify(body)})
         .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error); });
-      localStorage.setItem("lore", name);
+      localStorage.setItem("lore", body.name);
       await initLores(); loadGraph();
-    } catch (e){ alert("Could not create lore: " + e.message); }
+    } catch (e){ alert(errLabel + ": " + e.message); }
+  }
+  btn.onclick = () => {
+    const name = prompt("New (empty) lore name (letters, digits, - and _):");
+    if (name) makeLore({name}, "Could not create lore");
+  };
+  copyBtn.onclick = () => {
+    if (!LORE) return;
+    const name = prompt(`Copy "${LORE}" to a new lore named:`, LORE + "-copy");
+    if (name) makeLore({name, copy_from: LORE}, "Could not copy lore");
   };
 }
 const KIND_COLOR = {character:"#6f9ceb", location:"#5fb878", item:"#c9a93f",
