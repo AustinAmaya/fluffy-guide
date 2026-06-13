@@ -41,14 +41,18 @@ def _primary_header(conn, targets: list[str]) -> str:
         row = conn.execute("SELECT display_name FROM entities WHERE entity_id=?", (t,)).fetchone()
         names.append(row["display_name"] if row else t)
     return f"=== CONTEXT FOR: {', '.join(names)} ==="
+# Budgets sized for a large-context story model (e.g. Sonnet 4.6, 1M window): the
+# lore block is injected memory, not the story itself, so ~6000 tokens is ~0.6%
+# of the window while giving recent_continuity room for several past-story
+# summaries. All values are overridable per compile call.
 DEFAULT_LANE_BUDGETS = {
-    "character_card": 400,
-    "world_info": 350,
-    "relationships": 250,
-    "open_hooks": 250,
-    "recent_continuity": 450,
+    "character_card": 1000,
+    "world_info": 1200,
+    "relationships": 1200,
+    "open_hooks": 800,
+    "recent_continuity": 1800,
 }
-DEFAULT_TOTAL_BUDGET = 1700
+DEFAULT_TOTAL_BUDGET = 6000
 
 # Lane that carries an entity's identity card, by entity kind.
 CARD_LANE_BY_KIND = {

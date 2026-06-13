@@ -1,9 +1,19 @@
 """Test I: budget enforcement — over-budget chunks are dropped whole by priority."""
-from lore_stack.compiler import DEFAULT_LANE_BUDGETS, compile_context
+from lore_stack.compiler import (
+    DEFAULT_LANE_BUDGETS,
+    DEFAULT_TOTAL_BUDGET,
+    compile_context,
+)
 from lore_stack.models.delta import ChunkInput, LoreDelta
 from lore_stack.seams.embedder import FakeEmbedder
 from lore_stack.writeback import apply_delta
 from lore_stack.writeback.engine import token_estimate
+
+
+def test_default_budget_is_sized_for_a_large_context_model():
+    # Raised for large-context story models; lanes sum to the total.
+    assert DEFAULT_TOTAL_BUDGET == 6000
+    assert sum(DEFAULT_LANE_BUDGETS.values()) == DEFAULT_TOTAL_BUDGET
 
 
 def _flood_delta(n_chunks: int) -> LoreDelta:
