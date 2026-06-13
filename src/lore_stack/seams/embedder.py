@@ -13,6 +13,13 @@ from typing import Protocol
 
 _TOKEN_RE = re.compile(r"[a-z0-9']+")
 
+# Function words carry no lore semantics; without this filter, chunks sharing
+# only "the"/"a"/"story" with a query can outrank genuinely related chunks.
+_STOPWORDS = frozenset(
+    "a an and are as at about been be but by for from had has have he her his is it its"
+    " of on or she that the their them they this to was were will with".split()
+)
+
 
 class Embedder(Protocol):
     def embed(self, texts: list[str]) -> list[list[float]]: ...
@@ -42,7 +49,8 @@ class FakeEmbedder:
         return vec
 
     def embed_one(self, text: str) -> list[float]:
-        tokens = _TOKEN_RE.findall(text.lower())
+        all_tokens = _TOKEN_RE.findall(text.lower())
+        tokens = [t for t in all_tokens if t not in _STOPWORDS] or all_tokens
         if not tokens:
             return [0.0] * self.dimensions
         acc = [0.0] * self.dimensions

@@ -68,6 +68,10 @@ def compile_context(
     by_lane: dict[str, list[Candidate]] = {lane: [] for lane in LANE_ORDER}
     for cand in candidates:
         by_lane[cand.row["insertion_lane"]].append(cand)
+    # Score decides what is a candidate at all; within a lane, packing under
+    # budget pressure is priority-first (invariant: dropped by priority).
+    for lane in LANE_ORDER:
+        by_lane[lane].sort(key=lambda c: (-c.row["priority"], -c.score, c.chunk_id))
 
     selected: list[dict] = []
     dropped: list[dict] = []
