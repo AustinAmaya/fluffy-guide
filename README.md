@@ -33,7 +33,45 @@ lore-stack serve --db lore.db          # local visualizer at http://127.0.0.1:83
 
 Other commands: `ingest-story` (FakeExtractor over story+delta fixture pairs),
 `inspect entity|conflicts|motifs|stories`, `edit-fact` (authoritative manual
-edit), `deprecate` (soft delete), `export` (subgraph JSON/markdown).
+edit), `deprecate` (soft delete), `export` (subgraph JSON/markdown),
+`stage-story` + `stage list|show|apply|discard` (review workflow), and
+`snapshot create|list|rollback` (point-in-time history).
+
+## Review before commit (the primary ingestion path)
+
+Automatic extraction tends to over-produce. So the main path is **extract →
+review → downselect → apply**: an extracted `LoreDelta` is *staged* (writes
+nothing to the lore), the operator reviews it in the visualizer's inbox,
+unchecks unwanted items, and applies the selected subset.
+
+```bash
+lore-stack stage-story --db lore.db --file story.md --fixtures tests/fixtures/stories
+lore-stack stage list --db lore.db
+lore-stack stage apply --db lore.db --id stg_000001 --selection '{"entities":[0],"claims":[0]}'
+```
+
+On this reviewed path a human's approval replaces the confidence gate: approved
+claims always form soft facts, and promotion to canonical is corroboration-count
+only (≥2 distinct stories). The legacy `ingest-delta`/`ingest-story` path keeps
+the original 0.7/0.9 confidence thresholds.
+
+## Predicate registry (controlled vocabulary)
+
+`db/predicates.json` seeds a registry that turns free-text predicates into a
+governed ontology. Each predicate declares a **cardinality** (single vs
+multi-valued), a **persistence** class, and **aliases**. Effects: `occupation`
+normalizes to `profession` so synonyms corroborate; multi-valued predicates
+(`carries`, `visits`) coexist instead of falsely conflicting; unregistered
+predicates can form soft facts but never auto-canonize; operator manual edits
+auto-register their predicate.
+
+## Snapshots & merge suggestions
+
+Every mutating operation auto-snapshots the lore first; `snapshot list` / the
+visualizer History panel offer one-click rollback (itself undoable). When a new
+soft fact's value is embedding-similar (cosine ≥ 0.5) to an existing value on the
+same subject+predicate, a **merge suggestion** opens — never auto-merged; the
+operator picks which value to keep.
 
 ## The deterministic gate
 
@@ -48,10 +86,14 @@ enforcement, Hermes stub), the §5.2 invariant suite, Hypothesis property tests
 (derandomized), adversarial inputs, golden-file and byte-determinism tests, and
 the visualizer API. Live-model tests carry the `model` marker and are excluded.
 
-## Schema: base + reconciliation amendments
+## Schema: base + amendments
 
-`src/lore_stack/db/schema.sql` is the canonical schema: the STRICT-table block
-from the tech-stack report, verbatim, plus five amendments:
+`src/lore_stack/db/schema.sql` is migration 0001, plus later migrations 0002–0004
+(`db/migration_000*.sql`) layered on top. Amendments A1–A5 are in 0001; A6 (the
+predicate registry) is 0002; A7 (staging) is 0003; the `merge_suggestion`
+adjudication kind is 0004. The migration runner applies them in order and seeds
+the registry idempotently; a pre-existing 0001-only database upgrades cleanly
+(tested). The 0001 amendments:
 
 - **A1 — `facts.status` gains `'motif'`.** Recurring jokes are stored and
   retrievable but are never asserted canon and never auto-promoted.

@@ -16,6 +16,10 @@ One entry per non-obvious decision; one-line summaries up top.
 - [Phase 2 adapter placement](#phase2) — separate `lore_stack_adapters` top-level package; structured outputs against the existing contract.
 - [Synthesized fact-cards for query targets](#fact-cards) — entities named in a query always get identity representation, even without an authored card chunk.
 - [Multi-lore = one DB file per lore](#multi-lore) — a lore home directory; isolation by construction, selected per request.
+- [Retrieval precision (Phase 3 A)](#p3-retrieval) — stopword-free FTS, semantic noise floor, identity cards for targets only.
+- [Snapshots auto-fire via the connection (Phase 3 B)](#p3-snapshots) — LoreConnection.auto_snapshot, not per-call-site.
+- [Registry cardinality + confidence demotion (Phase 3 C/D)](#p3-registry) — single vs multi conflicts; reviewed path drops the confidence gate.
+- [Merge suggestions use the FakeEmbedder's word-overlap (Phase 3 E)](#p3-merge) — catches reordering dups, not morphological ones.
 
 ## Environment: hook python is the Hermes venv {#environment}
 `python` on PATH resolves to `...\hermes\hermes-agent\venv` — it has pytest and
@@ -130,6 +134,53 @@ production). Home mode: `serve --home DIR`, every API request selects
 `?lore=<name>` (strict name allowlist blocks path traversal; unknown → 404),
 `/api/lores` lists/creates. Single-db mode unchanged. The frontend shows a
 dropdown + "+ lore" only when home mode is detected.
+
+## Retrieval precision (Phase 3 A) {#p3-retrieval}
+Operator hit "tell a story about mirel visiting harrow fen" and got Boxwell's
+card. Three causes, three fixes: (1) the default FTS5 tokenizer indexes function
+words, so "a"/"about" in the query matched nearly every chunk body — FTS now
+drops stopwords (shared `STOPWORDS` set with the embedder). (2) Unrelated
+256-d hash vectors sit at ±0.06 cosine; that noise counted as a semantic signal
+— added a 0.12 floor. (3) Boxwell's *identity card* was pulled in by graph
+proximity (he's one hop from Mirel). Identity cards (character_card lane) now
+require the entity to be a query target or earn a direct hit; graph expansion
+still legitimately surfaces relationship/world/hook/continuity chunks. The
+golden Boxwell query was unaffected (he's a target there).
+
+## Snapshots auto-fire via the connection (Phase 3 B) {#p3-snapshots}
+The "snapshot before every mutation, from CLI/API/UI, without each call site
+remembering" requirement is met by a `LoreConnection(sqlite3.Connection)`
+subclass carrying an `auto_snapshot` flag (the base class can't hold attributes).
+`connect(path, auto_snapshot=True)` is set once at the CLI/API boundary; the
+mutating engine functions call `maybe_snapshot(conn, op)` which is a no-op unless
+the flag is set — so tests (default off) and read paths pay nothing, and reads
+never snapshot even on an auto_snapshot connection because they don't call a
+mutating function. Snapshots are whole-file via the SQLite online backup API
+(corpus is tiny). `maybe_snapshot` raises if called mid-transaction (the backup
+API would otherwise deadlock — verifier finding B-1).
+
+## Registry cardinality + confidence demotion (Phase 3 C/D) {#p3-registry}
+Two engine-policy shifts. **Cardinality:** the contradiction check runs only for
+single-valued predicates; multi-valued ones (carries, visits) coexist per-value.
+This changed test_double_contradiction from 2 adjudications to 1 (carries=multi
+now coexists) — the correct fix for implicit commitment C1. **Confidence
+demotion:** the reviewed path (`apply_delta(reviewed=True)`, used by staging)
+drops the confidence gate entirely — a human's approval is a stronger signal than
+a model's self-graded confidence, so approved claims always form soft facts and
+promotion is corroboration-count only. The legacy path keeps 0.7/0.9 so the A–J
+suite is untouched. The engine<->registry import cycle is broken by lazy
+in-function imports in engine (registry imports `normalize` from engine at module
+level; engine imports registry only inside functions).
+
+## Merge suggestions use the FakeEmbedder's word-overlap (Phase 3 E) {#p3-merge}
+The aggressive (cosine ≥ 0.5) duplicate detector is calibrated to what the
+FakeEmbedder actually measures: token-hash overlap. It catches reordering /
+filler-word duplicates ("cedar tool case" ~ "a cedar case of tools" = 0.67) but
+NOT morphological ones ("clockmaker" ~ "clock maker" = 0.01 — different single
+tokens, no subword similarity). A real embedder would catch both; this is a known
+limit of the deterministic fake, acceptable because suggestions only ever open a
+review item (never auto-merge). Stored as a new `merge_suggestion` adjudication
+kind (migration 0004 rebuilds the table — SQLite can't ALTER a CHECK).
 
 ## Phase 2 adapter placement {#phase2}
 The live extractor lives in a *separate top-level package*
