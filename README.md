@@ -125,21 +125,34 @@ the registry idempotently; a pre-existing 0001-only database upgrades cleanly
 The two human-authoritative carve-outs (manual edit, soft delete) are the only
 sanctioned exceptions to normal canonization, and both are unit-tested as such.
 
-## Multiple lores
+## Lores — first-class, isolated worlds
 
-A *lore* is one self-contained SQLite database. To keep several (testing lores
-plus a production lore), point the server at a **lore home** directory instead
-of a single file:
+A *lore* is a self-contained world: one SQLite database, fully isolated from
+every other lore (nothing is shared between them). Lores are a **functional
+feature, not just test scaffolding** — the lore you select is the unit of
+narrative connection:
+
+- **Working in an existing lore**, a new story connects to that world. Even a
+  query naming a character not yet in the lore returns the lore's recent
+  continuity as connective tissue — so a brand-new character can be woven into
+  existing threads (you might discover, mid-story, that the newcomer is an old
+  character's cousin).
+- **Creating a new lore** is how you say "clean slate, no connections." A fresh
+  lore is empty, so a story started there returns nothing until you populate it.
+
+Point the server at a **lore home** directory to keep several worlds and switch
+between them in the UI (dropdown + "+ lore"):
 
 ```bash
-lore-stack lores create --home lores --name production
-lore-stack lores create --home lores --name test-alpha
-lore-stack serve --home lores            # UI gains a lore dropdown + "+ lore"
+lore-stack lores create --home lores --name middlemarsh
+lore-stack lores create --home lores --name clockwork-coast
+lore-stack serve --home lores
 ```
 
 Every CLI command targets a lore via `--db lores/<name>.db`; every API call in
-home mode selects one via `?lore=<name>`. Lores are fully isolated — nothing is
-shared between them. `serve --db one.db` still works for single-lore use.
+home mode selects one via `?lore=<name>`. `serve --db one.db` still works for
+single-lore use. `demo.ps1` seeds three example worlds at increasing size
+(`test-boxwell` ~5 nodes, `harrow-hollow` ~10, `clockwork-coast` ~20).
 
 ## The visualizer
 

@@ -20,6 +20,7 @@ One entry per non-obvious decision; one-line summaries up top.
 - [Snapshots auto-fire via the connection (Phase 3 B)](#p3-snapshots) — LoreConnection.auto_snapshot, not per-call-site.
 - [Registry cardinality + confidence demotion (Phase 3 C/D)](#p3-registry) — single vs multi conflicts; reviewed path drops the confidence gate.
 - [Merge suggestions use the FakeEmbedder's word-overlap (Phase 3 E)](#p3-merge) — catches reordering dups, not morphological ones.
+- [Context format + lore-continuity fallback (Phase 4)](#p4-context) — primary/secondary headings; no-match in a populated lore reliably returns continuity.
 
 ## Environment: hook python is the Hermes venv {#environment}
 `python` on PATH resolves to `...\hermes\hermes-agent\venv` — it has pytest and
@@ -181,6 +182,22 @@ tokens, no subword similarity). A real embedder would catch both; this is a know
 limit of the deterministic fake, acceptable because suggestions only ever open a
 review item (never auto-merge). Stored as a new `merge_suggestion` adjudication
 kind (migration 0004 rebuilds the table — SQLite can't ALTER a CHECK).
+
+## Context format + lore-continuity fallback (Phase 4) {#p4-context}
+Two coupled changes from the "make the compiled context legible" request.
+**Format:** the block now leads with a primary `=== CONTEXT FOR: <entities> ===`
+header (entities resolved from the deterministically-ordered targets) and renders
+each lane as a secondary `## Heading`; the budget loop reserves the primary
+header's tokens on the first emitted piece (same trick as the trailing-newline
+reservation) so `token_estimate(text) <= budget` still holds. **Continuity
+fallback:** the operator's model is "the selected lore is the unit of
+connection" — within an existing lore, a query naming no known entity should
+return recent continuity as connective tissue. The old behavior only returned it
+when query words *incidentally* overlapped a continuity chunk (semantic/FTS),
+which was unreliable. Fix: in `gather_candidates`, when there are no targets,
+recent_continuity chunks are unconditionally relevant (reason `lore_continuity`).
+An empty lore has no such chunks, so a new lore still returns nothing — the
+"clean slate" path needs no special handling.
 
 ## Phase 2 adapter placement {#phase2}
 The live extractor lives in a *separate top-level package*
