@@ -265,6 +265,17 @@ def _apply_claim(conn, story_id: str, idx: int, claim: ClaimInput,
         )
         report.claims_written += 1
 
+    # Closed relationship set: a relationship (entity-object) claim may only use a
+    # registered relationship predicate (range='entity'). An off-vocabulary
+    # predicate -- or a text-attribute predicate misused with an entity object --
+    # is rejected outright: the claim is stored 'rejected', no fact forms, and the
+    # rest of the delta still applies. Attributes (object_literal) stay an open
+    # vocabulary and are never rejected here.
+    if claim.object_slug is not None and (pred_info is None or pred_info.range != "entity"):
+        write_claim("rejected", subject_id)
+        report.claims_rejected.append(claim_id)
+        return
+
     # Alias-only / unresolved references: store the claim, touch no facts.
     if subject_id is None or unresolved_object:
         write_claim("needs_review", subject_id)
@@ -496,12 +507,23 @@ def manual_edit_fact(
         ).fetchone()
         if obj is None or obj["status"] == "deprecated":
             raise WritebackError(f"unknown or deprecated object entity {object_entity_id!r}")
-    # The operator is authoritative: an edit using a new predicate *defines* it.
-    # Resolve known spellings to their canonical id for the label and deprecation;
-    # the registration write happens inside the transaction below.
+    # The operator is authoritative for ATTRIBUTES: an edit using a new text
+    # predicate *defines* it (auto-registered below). RELATIONSHIPS are a closed
+    # set, though -- an operator edit may only use a registered relationship
+    # predicate (range='entity'); it cannot mint a new edge type, and it cannot
+    # attach an entity object to a text predicate. Resolve known spellings to their
+    # canonical id for the label and deprecation.
     range_ = "entity" if object_entity_id is not None else "text"
     existing_pred = registry.lookup(conn, predicate)
-    predicate = existing_pred.predicate_id if existing_pred else normalize(predicate)
+    if range_ == "entity":
+        if existing_pred is None or existing_pred.range != "entity":
+            raise WritebackError(
+                f"unknown relationship predicate {predicate!r}: relationships are a"
+                " closed, fixed set -- add it to db/predicates.json to use it"
+            )
+        predicate = existing_pred.predicate_id
+    else:
+        predicate = existing_pred.predicate_id if existing_pred else normalize(predicate)
 
     maybe_snapshot(conn, f"edit {entity_id}.{predicate}")
     now = _now()

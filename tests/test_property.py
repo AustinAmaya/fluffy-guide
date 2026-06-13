@@ -45,7 +45,7 @@ claim_st = st.builds(
         evidence_excerpt=ev,
     ),
     subject=slugs,
-    predicate=st.sampled_from(["species", "profession", "carries", "trusts", "visits"]),
+    predicate=st.sampled_from(["species", "profession", "carries", "friends_with", "visits"]),
     obj=names,
     is_entity=st.booleans(),
     confidence=confidences,

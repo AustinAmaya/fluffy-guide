@@ -10,7 +10,7 @@ def test_relationship_fact_and_chunk(db_after_c):
     assert mirel is not None
 
     rel = db.execute(
-        "SELECT * FROM facts WHERE subject_entity_id='ent_mirel' AND predicate='trusts'"
+        "SELECT * FROM facts WHERE subject_entity_id='ent_mirel' AND predicate='friends_with'"
     ).fetchone()
     assert rel is not None
     assert rel["object_entity_id"] == "ent_boxwell"

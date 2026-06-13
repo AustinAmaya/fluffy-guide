@@ -13,10 +13,8 @@
     {"slug": "the-singing-bell", "display_name": "The Singing Bell", "kind": "item", "aliases": ["the bell"], "summary": "A bell at the lighthouse that hums before a storm; it too has vanished.", "confidence": 0.88, "evidence_excerpt": "The singing bell did not answer the wind that night."}
   ],
   "claims": [
-    {"subject_slug": "marina", "predicate": "keeps", "object_slug": "the-glass-foundry", "confidence": 0.9, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "Marina ran the foundry alone."},
-    {"subject_slug": "dorian", "predicate": "sibling_of", "object_slug": "marina", "confidence": 0.9, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "Dorian was Marina's younger brother."},
-    {"subject_slug": "dorian", "predicate": "tends", "object_slug": "gull-rock-lighthouse", "confidence": 0.88, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "Dorian kept the lighthouse watch."},
-    {"subject_slug": "the-singing-bell", "predicate": "hangs_in", "object_slug": "gull-rock-lighthouse", "confidence": 0.86, "importance": "low", "canonicality_hint": "candidate", "evidence_excerpt": "the bell had always hung in the lantern room"},
+    {"subject_slug": "the-glass-foundry", "predicate": "belongs_to", "object_slug": "marina", "confidence": 0.9, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "Marina ran the foundry alone."},
+    {"subject_slug": "dorian", "predicate": "family_of", "object_slug": "marina", "confidence": 0.9, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "Dorian was Marina's younger brother."},
     {"subject_slug": "boxwell", "predicate": "visits", "object_slug": "the-glass-foundry", "confidence": 0.85, "importance": "low", "canonicality_hint": "candidate", "evidence_excerpt": "Boxwell came to the foundry for his lens."}
   ],
   "chunks": [

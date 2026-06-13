@@ -33,7 +33,7 @@ def test_read_endpoints(client_db):
     graph = client.get("/api/graph").get_json()
     assert any(e["slug"] == "mirel" for e in graph["entities"])
     assert any(
-        e["subject_entity_id"] == "ent_mirel" and e["predicate"] == "trusts"
+        e["subject_entity_id"] == "ent_mirel" and e["predicate"] == "friends_with"
         and e["object_entity_id"] == "ent_boxwell"
         for e in graph["edges"]
     )
@@ -95,7 +95,7 @@ def test_manual_edit_is_canonical_and_preserves_history(client_db):
 def test_delete_is_soft_everywhere(client_db):
     client, conn = client_db
     fact_id = conn.execute(
-        "SELECT fact_id FROM facts WHERE subject_entity_id='ent_mirel' AND predicate='trusts'"
+        "SELECT fact_id FROM facts WHERE subject_entity_id='ent_mirel' AND predicate='friends_with'"
     ).fetchone()[0]
     assert client.post(f"/api/fact/{fact_id}/deprecate").status_code == 200
     row = conn.execute("SELECT status FROM facts WHERE fact_id=?", (fact_id,)).fetchone()

@@ -117,14 +117,14 @@ def test_literal_shaped_like_entity_id_cannot_corroborate(db_after_c):
     """A literal object that textually equals an internal entity id must not
     corroborate (or contradict) an entity-reference fact."""
     db = db_after_c
-    ingest_fixture(db, 4)  # creates soft fact: mirel --trusts--> ent_boxwell (entity object)
+    ingest_fixture(db, 4)  # creates soft fact: mirel --friends_with--> ent_boxwell (entity object)
     sneaky = LoreDelta(
         story_id="story_sneaky",
         story_title="Sneaky literal",
         story_summary="Asserts a literal that looks like an entity id.",
         entities=[],
         claims=[
-            ClaimInput(subject_slug="mirel", predicate="trusts",
+            ClaimInput(subject_slug="mirel", predicate="friends_with",
                        object_literal="ent_boxwell", confidence=0.99, evidence_excerpt="e"),
         ],
         chunks=[],
@@ -132,7 +132,7 @@ def test_literal_shaped_like_entity_id_cannot_corroborate(db_after_c):
     apply_delta(db, sneaky, embedder=FakeEmbedder())
     rows = db.execute(
         "SELECT object_entity_id, object_literal, status, confidence FROM facts"
-        " WHERE subject_entity_id='ent_mirel' AND predicate='trusts' ORDER BY fact_id"
+        " WHERE subject_entity_id='ent_mirel' AND predicate='friends_with' ORDER BY fact_id"
     ).fetchall()
     # Two distinct soft facts coexist; the entity-object fact was not touched.
     entity_fact = next(r for r in rows if r["object_entity_id"] == "ent_boxwell")

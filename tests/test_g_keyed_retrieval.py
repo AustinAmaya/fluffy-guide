@@ -39,7 +39,7 @@ def test_multi_entity_query_represents_every_target(db_seeded):
     # Mirel (character, no authored card) gets a fact-synthesized character-card entry.
     card_section = result.text.split("## World info")[0]
     assert "Mirel" in card_section
-    assert "trusts Boxwell [unconfirmed]" in result.text
+    assert "friends_with Boxwell [unconfirmed]" in result.text
     # Whitmoor (location, no authored chunk at all) appears under World info.
     assert "Whitmoor" in result.text
     synth = [s for s in result.selected if "synthesized_from_facts" in s["reasons"]]

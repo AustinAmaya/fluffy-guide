@@ -62,7 +62,7 @@ def test_winnie_the_pooh_seed_loads(db):
         " WHERE e.slug='winnie-the-pooh'")}
     assert "edward bear" in aliases and "sanders" in aliases
 
-    # Connected world: relationship edges exist (friend_of, resides_in, etc.).
+    # Connected world: relationship edges exist (friends_with, lives_in, etc.).
     edges = db.execute(
         "SELECT COUNT(*) FROM facts WHERE object_entity_id IS NOT NULL"
         " AND status != 'deprecated'"

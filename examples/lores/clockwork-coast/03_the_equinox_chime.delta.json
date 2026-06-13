@@ -11,11 +11,8 @@
     {"slug": "tobias", "display_name": "Tobias", "kind": "character", "aliases": ["the apprentice"], "summary": "Boxwell's apprentice from Harrow Hollow, grown and now sailed to the coast to help.", "confidence": 0.9, "evidence_excerpt": "Tobias had followed his master to the sea."}
   ],
   "claims": [
-    {"subject_slug": "salia", "predicate": "keeps", "object_slug": "saltleigh-docks", "confidence": 0.88, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "Salia was harbormaster of the Saltleigh Docks."},
-    {"subject_slug": "tobias", "predicate": "apprentices_to", "object_slug": "boxwell", "confidence": 0.9, "importance": "high", "canonicality_hint": "candidate", "evidence_excerpt": "Tobias was still Boxwell's apprentice."},
-    {"subject_slug": "cobalt-lens", "predicate": "fitted_to", "object_slug": "the-tideclock", "confidence": 0.85, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "Boxwell fitted the cobalt lens to the Tideclock."},
-    {"subject_slug": "the-equinox-chime", "predicate": "held_at", "object_slug": "the-lantern-walk", "confidence": 0.82, "importance": "low", "canonicality_hint": "candidate", "evidence_excerpt": "The chime was rung from the Lantern Walk."},
-    {"subject_slug": "salia", "predicate": "trusts", "object_slug": "boxwell", "confidence": 0.8, "importance": "low", "canonicality_hint": "candidate", "evidence_excerpt": "Salia came to rely on the clockmaker's eye."}
+    {"subject_slug": "tobias", "predicate": "serves", "object_slug": "boxwell", "confidence": 0.9, "importance": "high", "canonicality_hint": "candidate", "evidence_excerpt": "Tobias was still Boxwell's apprentice."},
+    {"subject_slug": "salia", "predicate": "friends_with", "object_slug": "boxwell", "confidence": 0.8, "importance": "low", "canonicality_hint": "candidate", "evidence_excerpt": "Salia came to rely on the clockmaker's eye."}
   ],
   "chunks": [
     {"title": "The Equinox Chime", "body": "Twice a year the Tideclock and the sun agree and the whole of Clockwork Coast gathers on the Lantern Walk for the Equinox Chime.", "activation_keys": ["equinox chime", "lantern walk", "festival"], "retrieval_mode": "hybrid", "insertion_lane": "world_info", "priority": 760, "entity_slug": "the-equinox-chime"},

@@ -82,6 +82,7 @@ class WritebackReport(BaseModel):
     entities_promoted: list[str] = Field(default_factory=list)
     aliases_added: int = 0
     claims_written: int = 0
+    claims_rejected: list[str] = Field(default_factory=list)
     facts_created: list[str] = Field(default_factory=list)
     facts_promoted: list[str] = Field(default_factory=list)
     chunks_created: list[str] = Field(default_factory=list)

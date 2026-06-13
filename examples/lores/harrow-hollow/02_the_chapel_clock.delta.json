@@ -10,10 +10,10 @@
     {"slug": "pip", "display_name": "Pip", "kind": "character", "aliases": ["the terrier"], "summary": "Tobias's quick brown terrier, with a nose for hidden things.", "confidence": 0.85, "evidence_excerpt": "Pip scratched at the mill door until they followed."}
   ],
   "claims": [
-    {"subject_slug": "the-hollow-chapel", "predicate": "located_in", "object_slug": "harrow-hollow", "confidence": 0.9, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "The chapel stands at the heart of the hollow."},
+    {"subject_slug": "the-hollow-chapel", "predicate": "lives_in", "object_slug": "harrow-hollow", "confidence": 0.9, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "The chapel stands at the heart of the hollow."},
     {"subject_slug": "pip", "predicate": "belongs_to", "object_slug": "tobias", "confidence": 0.88, "importance": "low", "canonicality_hint": "candidate", "evidence_excerpt": "Pip was Tobias's shadow."},
     {"subject_slug": "boxwell", "predicate": "carries", "object_literal": "cedar tool case", "confidence": 0.92, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "the cedar case never left his side"},
-    {"subject_slug": "tobias", "predicate": "keeps", "object_slug": "the-stone-mill", "confidence": 0.8, "importance": "low", "canonicality_hint": "candidate", "evidence_excerpt": "Tobias's family had kept the stone mill for generations."}
+    {"subject_slug": "the-stone-mill", "predicate": "belongs_to", "object_slug": "tobias", "confidence": 0.8, "importance": "low", "canonicality_hint": "candidate", "evidence_excerpt": "Tobias's family had kept the stone mill for generations."}
   ],
   "chunks": [
     {"title": "The chapel clock mystery", "body": "The hollow chapel's clock stopped on the longest night because a moonstone pendant was wedged in its movement — no one will say whose it was.", "activation_keys": ["chapel", "clock", "moonstone pendant"], "retrieval_mode": "hybrid", "insertion_lane": "open_hooks", "priority": 850, "entity_slug": "the-hollow-chapel"},

@@ -6,6 +6,16 @@ and accepted aliases. Writeback consults the registry to normalize spellings,
 decide whether contradictions are possible, and gate auto-canonization.
 
 LLM proposes (claims), code disposes (this registry decides the rules).
+
+Two vocabularies, governed differently (see the ontology spec):
+- **Relationships** (`range='entity'`, a graph edge to another entity) are a
+  CLOSED, fixed set — the 11 child-legible predicates seeded in predicates.json.
+  An entity-object claim whose predicate is not a registered relationship is
+  rejected at writeback; relationships are never auto-registered. Use
+  `is_registered_relationship` to gate them.
+- **Attributes** (`range='text'`, a literal fact about one entity — profession,
+  species, ...) are an OPEN vocabulary: unregistered ones still form soft facts
+  (they just can't auto-canonize), and operator edits auto-register them.
 """
 import json
 import sqlite3
@@ -98,6 +108,16 @@ def lookup(conn: sqlite3.Connection, raw_predicate: str) -> Optional[PredicateIn
         symmetry=row["symmetry"],
         registered_by=row["registered_by"],
     )
+
+
+def is_registered_relationship(conn: sqlite3.Connection, raw_predicate: str) -> bool:
+    """True iff the predicate resolves (by id or alias) to a registered
+    relationship — one whose `range` is 'entity'. This is the closed-set guard:
+    only these predicates may be the edge of an entity-object claim or a
+    relationship manual-edit. Attributes (`range='text'`) return False here and
+    are governed by the open-vocabulary rules instead."""
+    info = lookup(conn, raw_predicate)
+    return info is not None and info.range == "entity"
 
 
 def ensure_registered(

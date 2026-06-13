@@ -14,10 +14,9 @@
   ],
   "claims": [
     {"subject_slug": "boxwell", "predicate": "visits", "object_slug": "clockwork-coast", "confidence": 0.95, "importance": "high", "canonicality_hint": "candidate", "evidence_excerpt": "Boxwell came to the coast at the council's summons."},
-    {"subject_slug": "the-tideclock", "predicate": "housed_in", "object_slug": "the-tide-tower", "confidence": 0.94, "importance": "high", "canonicality_hint": "candidate", "evidence_excerpt": "The Tideclock filled the tower's upper room."},
-    {"subject_slug": "captain-saltleigh", "predicate": "trusts", "object_slug": "boxwell", "confidence": 0.9, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "The captain vouched for the clockmaker."},
-    {"subject_slug": "fenwick", "predicate": "resents", "object_slug": "boxwell", "confidence": 0.88, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "Fenwick thought the work should have been his."},
-    {"subject_slug": "lucia-the-lamplighter", "predicate": "resides_in", "object_slug": "clockwork-coast", "confidence": 0.85, "importance": "low", "canonicality_hint": "candidate", "evidence_excerpt": "Lucia had lit the coast's lamps all her life."}
+    {"subject_slug": "captain-saltleigh", "predicate": "friends_with", "object_slug": "boxwell", "confidence": 0.9, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "The captain vouched for the clockmaker."},
+    {"subject_slug": "fenwick", "predicate": "against", "object_slug": "boxwell", "confidence": 0.88, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "Fenwick thought the work should have been his."},
+    {"subject_slug": "lucia-the-lamplighter", "predicate": "lives_in", "object_slug": "clockwork-coast", "confidence": 0.85, "importance": "low", "canonicality_hint": "candidate", "evidence_excerpt": "Lucia had lit the coast's lamps all her life."}
   ],
   "chunks": [
     {"title": "Boxwell on the coast", "body": "Boxwell has been called to Clockwork Coast to mend the great Tideclock, on the recommendation of the innkeeper Mirel.", "activation_keys": ["boxwell", "clockwork coast", "tideclock"], "retrieval_mode": "hybrid", "insertion_lane": "character_card", "priority": 1000, "entity_slug": "boxwell"},

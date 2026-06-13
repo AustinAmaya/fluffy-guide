@@ -12,10 +12,10 @@
   ],
   "claims": [
     {"subject_slug": "boxwell", "predicate": "visits", "object_slug": "harrow-hollow", "confidence": 0.95, "importance": "high", "canonicality_hint": "candidate", "evidence_excerpt": "Boxwell wintered in the hollow."},
-    {"subject_slug": "tobias", "predicate": "apprentices_to", "object_slug": "boxwell", "confidence": 0.9, "importance": "high", "canonicality_hint": "candidate", "evidence_excerpt": "Tobias begged to be taken on as an apprentice."},
-    {"subject_slug": "boxwell", "predicate": "taught_by", "object_slug": "old-gregor", "confidence": 0.88, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "Old Gregor had been his master once."},
-    {"subject_slug": "wren", "predicate": "resides_in", "object_slug": "harrow-hollow", "confidence": 0.85, "importance": "low", "canonicality_hint": "candidate", "evidence_excerpt": "Wren had never left the hollow."},
-    {"subject_slug": "mirel", "predicate": "trusts", "object_slug": "boxwell", "confidence": 0.9, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "Mirel's letter spoke to him as an old friend."}
+    {"subject_slug": "tobias", "predicate": "serves", "object_slug": "boxwell", "confidence": 0.9, "importance": "high", "canonicality_hint": "candidate", "evidence_excerpt": "Tobias begged to be taken on as an apprentice."},
+    {"subject_slug": "old-gregor", "predicate": "mentors", "object_slug": "boxwell", "confidence": 0.88, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "Old Gregor had been his master once."},
+    {"subject_slug": "wren", "predicate": "lives_in", "object_slug": "harrow-hollow", "confidence": 0.85, "importance": "low", "canonicality_hint": "candidate", "evidence_excerpt": "Wren had never left the hollow."},
+    {"subject_slug": "mirel", "predicate": "friends_with", "object_slug": "boxwell", "confidence": 0.9, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "Mirel's letter spoke to him as an old friend."}
   ],
   "chunks": [
     {"title": "Boxwell in winter", "body": "Boxwell is wintering in Harrow Hollow, mending the village's clocks from a borrowed workshop by the mill.", "activation_keys": ["boxwell", "harrow hollow", "winter"], "retrieval_mode": "hybrid", "insertion_lane": "character_card", "priority": 1000, "entity_slug": "boxwell"},

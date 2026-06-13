@@ -25,7 +25,7 @@
   "claims": [
     {
       "subject_slug": "mirel",
-      "predicate": "trusts",
+      "predicate": "friends_with",
       "object_slug": "boxwell",
       "confidence": 0.92,
       "importance": "high",
@@ -33,9 +33,9 @@
       "evidence_excerpt": "the innkeeper Mirel trusted Boxwell's discretion entirely"
     },
     {
-      "subject_slug": "mirel",
-      "predicate": "keeps",
-      "object_slug": "the-brambled-inn",
+      "subject_slug": "the-brambled-inn",
+      "predicate": "belongs_to",
+      "object_slug": "mirel",
       "confidence": 0.93,
       "importance": "medium",
       "canonicality_hint": "candidate",

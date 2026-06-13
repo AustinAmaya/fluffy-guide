@@ -1,7 +1,95 @@
 [
   {
+    "predicate_id": "family_of",
+    "aliases": ["parent_of", "child_of", "mother_of", "father_of", "son_of", "daughter_of", "sibling_of", "brother_of", "sister_of", "married_to", "spouse_of", "related_to", "kin_of"],
+    "cardinality": "multi",
+    "persistence": "permanent",
+    "range": "entity",
+    "symmetry": "symmetric"
+  },
+  {
+    "predicate_id": "friends_with",
+    "aliases": ["friend_of", "friends", "likes", "loves", "trusts", "fond_of", "companion_of", "pals_with"],
+    "cardinality": "multi",
+    "persistence": "state",
+    "range": "entity",
+    "symmetry": "symmetric"
+  },
+  {
+    "predicate_id": "against",
+    "aliases": ["enemy_of", "foe_of", "rival_of", "resents", "dislikes", "fights", "opposes", "villain_to", "afraid_of"],
+    "cardinality": "multi",
+    "persistence": "state",
+    "range": "entity",
+    "symmetry": "directed"
+  },
+  {
+    "predicate_id": "mentors",
+    "aliases": ["teacher_of", "teaches", "master_of", "guides", "trains", "mentor_of"],
+    "cardinality": "multi",
+    "persistence": "state",
+    "range": "entity",
+    "symmetry": "directed"
+  },
+  {
+    "predicate_id": "serves",
+    "aliases": ["apprentices_to", "apprentice_of", "works_for", "helper_of", "assistant_to", "student_of", "learns_from", "taught_by"],
+    "cardinality": "multi",
+    "persistence": "state",
+    "range": "entity",
+    "symmetry": "directed"
+  },
+  {
+    "predicate_id": "leads",
+    "aliases": ["leader_of", "rules", "commands", "in_charge_of", "boss_of", "captain_of", "queen_of", "king_of", "chief_of"],
+    "cardinality": "multi",
+    "persistence": "state",
+    "range": "entity",
+    "symmetry": "directed"
+  },
+  {
+    "predicate_id": "belongs_to",
+    "aliases": ["owned_by", "possession_of", "pet_of", "property_of"],
+    "cardinality": "multi",
+    "persistence": "state",
+    "range": "entity",
+    "symmetry": "directed"
+  },
+  {
+    "predicate_id": "lives_in",
+    "aliases": ["resides_in", "lives_at", "home_is", "dwells_in", "based_in", "from", "located_in", "inside", "part_of_place"],
+    "cardinality": "multi",
+    "persistence": "state",
+    "range": "entity",
+    "symmetry": "directed"
+  },
+  {
+    "predicate_id": "visits",
+    "aliases": ["visited", "travels_to", "goes_to", "arrives_at", "journeys_to", "comes_to", "stops_at"],
+    "cardinality": "multi",
+    "persistence": "episodic",
+    "range": "entity",
+    "symmetry": "directed"
+  },
+  {
+    "predicate_id": "wants",
+    "aliases": ["covets", "seeks", "desires", "wishes_for", "looking_for", "after", "chases"],
+    "cardinality": "multi",
+    "persistence": "state",
+    "range": "entity",
+    "symmetry": "directed"
+  },
+  {
+    "predicate_id": "linked_to",
+    "aliases": ["connected_to", "associated_with", "tied_to", "knows", "other"],
+    "cardinality": "multi",
+    "persistence": "state",
+    "range": "entity",
+    "symmetry": "symmetric"
+  },
+  {
     "predicate_id": "profession",
-    "aliases": ["occupation", "job", "trade", "vocation", "works as"],
+    "aliases": ["occupation", "job", "trade", "vocation", "works as", "role"],
     "cardinality": "single",
     "persistence": "permanent",
     "range": "text"
@@ -21,26 +109,11 @@
     "range": "text"
   },
   {
-    "predicate_id": "visits",
-    "aliases": ["visited", "travels to", "goes to", "arrives at"],
+    "predicate_id": "has_trait",
+    "aliases": ["trait", "characteristic", "quality"],
     "cardinality": "multi",
-    "persistence": "episodic",
-    "range": "entity"
-  },
-  {
-    "predicate_id": "trusts",
-    "aliases": ["trusted", "relies on"],
-    "cardinality": "single",
-    "persistence": "state",
-    "range": "entity",
-    "symmetry": "directed"
-  },
-  {
-    "predicate_id": "keeps",
-    "aliases": ["runs", "owns", "tends", "manages"],
-    "cardinality": "single",
-    "persistence": "state",
-    "range": "entity"
+    "persistence": "permanent",
+    "range": "text"
   },
   {
     "predicate_id": "claimed_title",
@@ -48,12 +121,5 @@
     "cardinality": "multi",
     "persistence": "permanent",
     "range": "text"
-  },
-  {
-    "predicate_id": "resides_in",
-    "aliases": ["lives in", "home is", "dwells in", "based in"],
-    "cardinality": "single",
-    "persistence": "state",
-    "range": "entity"
   }
 ]
