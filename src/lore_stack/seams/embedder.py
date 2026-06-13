@@ -15,10 +15,12 @@ _TOKEN_RE = re.compile(r"[a-z0-9']+")
 
 # Function words carry no lore semantics; without this filter, chunks sharing
 # only "the"/"a"/"story" with a query can outrank genuinely related chunks.
-_STOPWORDS = frozenset(
+# Shared with retrieval.fts so keyword and semantic passes agree on what is noise.
+STOPWORDS = frozenset(
     "a an and are as at about been be but by for from had has have he her his is it its"
     " of on or she that the their them they this to was were will with".split()
 )
+_STOPWORDS = STOPWORDS  # backward-compatible alias
 
 
 class Embedder(Protocol):

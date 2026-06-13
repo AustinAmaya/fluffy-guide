@@ -47,6 +47,49 @@ def test_multi_entity_query_represents_every_target(db_seeded):
     assert again.text.encode("utf-8") == result.text.encode("utf-8")
 
 
+def test_query_does_not_pull_unrequested_identity_cards(db_seeded):
+    """Regression: 'mirel visiting harrow fen' must not surface Boxwell's card.
+    Boxwell is one graph hop from Mirel, but graph proximity must never drag an
+    unrequested entity's identity card into the briefing. His relationship chunk
+    (which legitimately mentions him) may still appear."""
+    db = db_seeded
+    result = compile_context(
+        db, "tell a story about mirel visiting harrow fen", embedder=FakeEmbedder()
+    )
+    assert set(result.targets) == {"ent_mirel", "ent_harrow-fen"}
+    assert "ent_boxwell" not in result.targets
+
+    card_titles = [s["title"] for s in result.selected if s["lane"] == "character_card"]
+    assert "Boxwell card" not in card_titles
+    assert "Boxwell is a quiet travelling clockmaker" not in result.text
+    # The two requested entities are represented.
+    assert any("Mirel" in t for t in card_titles)
+    assert "Harrow Fen" in result.text
+    # Mirel's relationship chunk survives even though its body names Boxwell.
+    assert "Mirel and Boxwell" in [s["title"] for s in result.selected]
+
+    # No selected chunk leaked in on graph proximity alone in the identity lane.
+    for s in result.selected:
+        if s["lane"] == "character_card":
+            assert s["reasons"] != ["graph_1hop"]
+
+
+def test_stopword_only_overlap_is_not_a_keyword_hit(db_seeded):
+    """A chunk sharing only function words ('a', 'about') with the query must not
+    earn an FTS hit."""
+    from lore_stack.retrieval import gather_candidates
+
+    cands = {c.chunk_id: c for c in gather_candidates(
+        db_seeded, "tell a story about mirel", embedder=FakeEmbedder())}
+    boxwell_card = db_seeded.execute(
+        "SELECT chunk_id FROM lore_chunks WHERE title='Boxwell card'"
+    ).fetchone()[0]
+    # Boxwell's card body contains "a"/"and" but none of the content words; it
+    # must not be a candidate at all for a query that doesn't name or neighbour-
+    # qualify it through a non-identity lane.
+    assert boxwell_card not in cands
+
+
 def _assert_audit_matches(db, run, result):
     assert run is not None
     assert run["target_entity_id"] == "ent_boxwell"

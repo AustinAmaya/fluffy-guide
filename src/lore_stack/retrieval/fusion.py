@@ -18,6 +18,17 @@ from lore_stack.retrieval.fts import ACTIVE_CHUNK_STATUSES, fts_search
 from lore_stack.seams.embedder import Embedder
 from lore_stack.writeback.engine import normalize
 
+# Two unrelated 256-d hash vectors have cosine in roughly +/-0.06. A real topical
+# overlap clears this comfortably; the floor keeps that noise from making an
+# off-topic chunk a candidate (and from adding spurious score to a real one).
+SEMANTIC_FLOOR = 0.12
+
+# Only chunks in this lane carry an entity's *identity*. They must be earned by a
+# direct hit or by the entity being a query target -- never pulled in purely by
+# graph expansion from a neighbour (that would surface Boxwell's card on a query
+# that only named Mirel).
+IDENTITY_LANE = "character_card"
+
 
 @dataclass
 class Candidate:
@@ -131,6 +142,8 @@ def gather_candidates(
         if fts_score:
             cand.reasons.append("fts")
         cosine = cosine_scores.get(row["chunk_id"], 0.0)
+        if cosine < SEMANTIC_FLOOR:
+            cosine = 0.0  # below the noise floor -> not a semantic signal at all
         if cosine > 0:
             cand.reasons.append("semantic")
 
@@ -139,10 +152,16 @@ def gather_candidates(
         elif mode == "semantic":
             exact_hit = alias_hit = fts_score = 0.0
 
+        direct_hit = bool(exact_hit or alias_hit or fts_score or cosine > 0.0)
+        is_target = row["entity_id"] in targets
+
         graph_hit = 1.0 if row["entity_id"] in one_hop else 0.0
+        # Graph expansion never qualifies an identity card for a non-target entity.
+        if row["insertion_lane"] == IDENTITY_LANE and not is_target:
+            graph_hit = 0.0
         if graph_hit:
             cand.reasons.append("graph_1hop")
-        pinned_to_target = mode == "pinned" and row["entity_id"] in targets
+        pinned_to_target = mode == "pinned" and is_target
         if pinned_to_target:
             cand.reasons.append("pinned")
 
@@ -164,10 +183,12 @@ def gather_candidates(
             + (4.0 if pinned_to_target else 0.0)
         )
 
-        relevant = (
-            exact_hit or alias_hit or fts_score or cosine > 0.0
-            or graph_hit or pinned_to_target
-        )
+        # An identity card must be earned directly or by being a query target;
+        # other lanes may still be pulled in by graph expansion alone.
+        if row["insertion_lane"] == IDENTITY_LANE:
+            relevant = direct_hit or is_target
+        else:
+            relevant = direct_hit or graph_hit or pinned_to_target
         if relevant:
             candidates[row["chunk_id"]] = cand
 
