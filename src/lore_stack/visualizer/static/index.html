@@ -378,13 +378,19 @@ async function loadPanels(){
   const contradictions = conflicts.filter(c => c.payload.kind !== "merge_suggestion");
   const merges = conflicts.filter(c => c.payload.kind === "merge_suggestion");
   document.getElementById("conflicts").innerHTML = "<h2>Open conflicts</h2>" +
-    (contradictions.length ? contradictions.map(c => `
-      <div class="fact"><span class="badge deprecated">open</span>
-        <span class="small">${esc(c.reason)}</span>
-        <div class="small dim" style="flex-basis:100%">proposed:
-          ${esc(c.payload.proposed_object_literal ?? c.payload.proposed_object_entity_id ?? "?")}
-          vs existing: ${esc(c.payload.existing_object_literal ?? c.payload.existing_object_entity_id ?? "?")}</div>
-      </div>`).join("") : '<div class="dim">none</div>') +
+    '<div class="small dim">A new story contradicted established canon. Keep what canon already holds, or accept the new value (which deprecates the old).</div>' +
+    (contradictions.length ? contradictions.map(c => {
+      const proposed = c.payload.proposed_object_literal ?? c.payload.proposed_object_entity_id ?? "?";
+      const existing = c.payload.existing_object_literal ?? c.payload.existing_object_entity_id ?? "?";
+      return `<div class="fact" style="flex-direction:column; align-items:flex-start">
+        <div class="small"><b>${esc(c.payload.predicate)}</b>:
+          canon says <b>${esc(existing)}</b>, a story proposed <b>${esc(proposed)}</b></div>
+        <div style="margin-top:4px">
+          <button class="small" onclick="resolveConflict('${esc(c.item_id)}','keep_existing')">keep "${esc(existing)}"</button>
+          <button class="small" onclick="resolveConflict('${esc(c.item_id)}','accept_proposed')">use "${esc(proposed)}"</button>
+        </div>
+      </div>`;
+    }).join("") : '<div class="dim">none</div>') +
     "<h2 style='margin-top:10px'>Merge suggestions</h2>" +
     '<div class="small dim">Possible duplicate values. Pick the one to keep; the other becomes history.</div>' +
     (merges.length ? merges.map(c => `
@@ -445,6 +451,12 @@ async function resolveMerge(itemId, keepFactId){
   try { await post(`/api/merge/${encodeURIComponent(itemId)}/resolve`, {keep: keepFactId});
         await loadGraph(); }
   catch (e){ alert("Merge failed: " + e.message); }
+}
+
+async function resolveConflict(itemId, decision){
+  try { await post(`/api/conflicts/${encodeURIComponent(itemId)}/resolve`, {decision});
+        await loadGraph(); }
+  catch (e){ alert("Resolve failed: " + e.message); }
 }
 
 async function rollback(seq){

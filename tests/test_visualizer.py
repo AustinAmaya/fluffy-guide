@@ -228,6 +228,28 @@ def test_home_mode_lore_lifecycle(home_client):
     assert client.get("/api/entities?lore=production").get_json() == []
 
 
+def test_contradiction_resolves_via_api(client_db):
+    """The open conflict from the seeded baker story (stories 1,2,5 ingested in
+    the client_db fixture) resolves through the API: accept_proposed flips canon."""
+    client, conn = client_db
+    conflicts = client.get("/api/conflicts").get_json()
+    contradictions = [c for c in conflicts if c["payload"].get("kind") != "merge_suggestion"]
+    assert len(contradictions) == 1
+    item_id = contradictions[0]["item_id"]
+
+    resp = client.post(f"/api/conflicts/{item_id}/resolve", json={"decision": "accept_proposed"})
+    assert resp.status_code == 200
+    facts = client.get("/api/facts?entity=ent_boxwell").get_json()
+    canon = {f["object_literal"] for f in facts
+             if f["predicate"] == "profession" and f["status"] == "canonical"}
+    assert canon == {"baker"}  # proposed value accepted
+    # Conflict no longer open.
+    assert not [c for c in client.get("/api/conflicts").get_json()
+                if c["payload"].get("kind") != "merge_suggestion"]
+    assert client.post("/api/conflicts/adj_nope/resolve",
+                       json={"decision": "keep_existing"}).status_code == 400
+
+
 def test_merge_suggestion_surfaces_and_resolves_via_api(client_db):
     import json
 

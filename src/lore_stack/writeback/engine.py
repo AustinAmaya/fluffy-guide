@@ -564,6 +564,55 @@ def resolve_merge_suggestion(conn: sqlite3.Connection, item_id: str, keep_fact_i
         )
 
 
+def resolve_contradiction(conn: sqlite3.Connection, item_id: str, decision: str) -> None:
+    """Operator resolution of a contradiction (item_kind='claim').
+
+    'keep_existing' dismisses the item, canon unchanged. 'accept_proposed' makes
+    the proposed value canonical via the authoritative manual-edit path (deprecate
+    the existing canonical fact, write the proposed value as canonical with a
+    'manual' source) and marks the item resolved.
+    """
+    if decision not in ("keep_existing", "accept_proposed"):
+        raise WritebackError("decision must be 'keep_existing' or 'accept_proposed'")
+    item = conn.execute(
+        "SELECT payload_json, status, item_kind FROM adjudication_queue WHERE item_id=?",
+        (item_id,),
+    ).fetchone()
+    if item is None or item["item_kind"] != "claim":
+        raise WritebackError(f"no contradiction {item_id!r}")
+    if item["status"] != "open":
+        raise WritebackError(f"contradiction {item_id!r} is already {item['status']}")
+    payload = json.loads(item["payload_json"])
+    now = _now()
+
+    if decision == "keep_existing":
+        maybe_snapshot(conn, f"keep existing ({item_id})")
+        payload["resolution"] = {"decision": "keep_existing"}
+        with conn:
+            conn.execute(
+                "UPDATE adjudication_queue SET status='dismissed', payload_json=?"
+                " WHERE item_id=?",
+                (json.dumps(payload), item_id),
+            )
+        return
+
+    # accept_proposed: the proposed value wins, by operator authority.
+    fact_id = manual_edit_fact(
+        conn,
+        entity_id=payload["subject_entity_id"],
+        predicate=payload["predicate"],
+        object_literal=payload.get("proposed_object_literal"),
+        object_entity_id=payload.get("proposed_object_entity_id"),
+    )
+    payload["resolution"] = {"decision": "accept_proposed", "new_fact_id": fact_id}
+    with conn:
+        conn.execute(
+            "UPDATE adjudication_queue SET status='resolved', payload_json=?"
+            " WHERE item_id=?",
+            (json.dumps(payload), item_id),
+        )
+
+
 def deprecate_fact(conn: sqlite3.Connection, fact_id: str) -> None:
     row = conn.execute("SELECT fact_id FROM facts WHERE fact_id=?", (fact_id,)).fetchone()
     if row is None:
