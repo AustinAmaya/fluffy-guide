@@ -228,6 +228,38 @@ def test_home_mode_lore_lifecycle(home_client):
     assert client.get("/api/entities?lore=production").get_json() == []
 
 
+def test_home_mode_staging_inbox(home_client):
+    from conftest import load_fixture_delta
+    from lore_stack import staging
+    from lore_stack.db import connect
+
+    client, home = home_client
+    client.post("/api/lores", json={"name": "production"})
+
+    # Stage a proposal directly into the lore's staging table.
+    conn = connect(home / "production.db")
+    sid = staging.stage(conn, load_fixture_delta(1))
+    conn.close()
+
+    inbox = client.get("/api/staged?lore=production").get_json()
+    assert len(inbox) == 1 and inbox[0]["staging_id"] == sid
+    assert inbox[0]["counts"]["entities"] == 2
+
+    detail = client.get(f"/api/staged/{sid}?lore=production").get_json()
+    assert detail["delta"]["entities"][0]["slug"] == "boxwell"
+
+    # Apply only Boxwell + his profession claim.
+    resp = client.post(f"/api/staged/{sid}/apply?lore=production",
+                       json={"selection": {"entities": [0], "claims": [0], "chunks": []}})
+    assert resp.status_code == 200
+    ents = {e["slug"] for e in client.get("/api/entities?lore=production").get_json()}
+    assert ents == {"boxwell"}
+    # Inbox now empty; re-applying is rejected.
+    assert client.get("/api/staged?lore=production").get_json() == []
+    assert client.post(f"/api/staged/{sid}/apply?lore=production").status_code == 400
+    assert client.get("/api/staged/nope?lore=production").status_code == 404
+
+
 def test_home_mode_snapshots_and_rollback(home_client):
     from lore_stack.db import connect
 

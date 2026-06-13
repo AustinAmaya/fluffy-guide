@@ -31,7 +31,7 @@ def test_init_db_cli_builds_schema(tmp_path, capsys):
     assert EXPECTED_TRIGGERS <= triggers
 
     versions = [r[0] for r in conn.execute("SELECT version FROM schema_migrations")]
-    assert versions == ["0001_initial", "0002_predicates"]
+    assert versions == ["0001_initial", "0002_predicates", "0003_staging"]
 
     indexes = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")}
     assert "idx_sources_checksum" in indexes
@@ -66,10 +66,10 @@ def test_migration_0002_upgrades_a_seeded_v1_db(tmp_path):
         r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
     }
 
-    # Now run the migration runner: it should apply only 0002 and seed predicates.
+    # Now run the migration runner: it applies the later migrations and seeds.
     applied = init_db(conn)
-    assert applied == ["0002_predicates"]
-    assert applied_versions(conn) == ["0001_initial", "0002_predicates"]
+    assert applied == ["0002_predicates", "0003_staging"]
+    assert applied_versions(conn) == ["0001_initial", "0002_predicates", "0003_staging"]
     # Pre-existing data survived; registry is now present.
     assert conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0] == before
     assert conn.execute("SELECT COUNT(*) FROM predicates").fetchone()[0] > 0

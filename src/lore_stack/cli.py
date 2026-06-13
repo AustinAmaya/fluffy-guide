@@ -66,6 +66,73 @@ def _cmd_ingest_story(args) -> int:
     return 0
 
 
+def _cmd_stage_story(args) -> int:
+    from lore_stack import staging
+
+    conn = connect(args.db)
+    story_path = Path(args.file)
+    story_text = story_path.read_text(encoding="utf-8")
+    extractor = FakeExtractor.from_fixture_dir(Path(args.fixtures))
+    story_id = args.story_id or f"story_{story_path.stem}"
+    try:
+        delta = extractor.extract(story_text, story_id=story_id)
+    except KeyError as exc:
+        print(f"extraction failed: {exc}", file=sys.stderr)
+        return 1
+    staging_id = staging.stage(conn, delta, story_text=story_text)
+    print(f"staged {staging_id} ({len(delta.entities)} entities, {len(delta.claims)} claims,"
+          f" {len(delta.chunks)} chunks) -- review before applying")
+    return 0
+
+
+def _cmd_stage(args) -> int:
+    from lore_stack import staging
+
+    if args.action in ("show", "apply", "discard") and not args.id:
+        print(f"stage {args.action} requires --id", file=sys.stderr)
+        return 1
+    if args.action == "apply":
+        conn = connect(args.db, auto_snapshot=True)
+    else:
+        conn = connect(args.db)
+
+    if args.action == "list":
+        rows = staging.list_staged(conn, status=args.status)
+        if not rows:
+            print(f"(no {args.status} stages)")
+            return 0
+        for s in rows:
+            c = s["counts"]
+            print(f"  {s['staging_id']}  {s['story_title'] or s['story_id']}  "
+                  f"{c['entities']}ent {c['claims']}cl {c['chunks']}ch  {s['created_at']}")
+        return 0
+    if args.action == "show":
+        s = staging.get_staged(conn, args.id)
+        if s is None:
+            print(f"unknown stage {args.id!r}", file=sys.stderr)
+            return 1
+        print(json.dumps(s, indent=2, default=str))
+        return 0
+    if args.action == "discard":
+        try:
+            staging.discard_staged(conn, args.id)
+        except staging.StagingError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(f"discarded {args.id} (nothing written to the lore)")
+        return 0
+    # apply
+    selection = json.loads(args.selection) if args.selection else None
+    try:
+        report = staging.apply_staged(conn, args.id, selection=selection,
+                                      embedder=FakeEmbedder())
+    except staging.StagingError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(report.model_dump_json(indent=2))
+    return 0
+
+
 def _cmd_compile_context(args) -> int:
     conn = connect(args.db)
     result = compile_context(
@@ -290,6 +357,22 @@ def main(argv=None) -> int:
     p.add_argument("--fixtures", required=True, help="dir of <name>.md + <name>.delta.json pairs")
     p.add_argument("--story-id", default=None)
     p.set_defaults(func=_cmd_ingest_story)
+
+    p = sub.add_parser("stage-story", help="extract a story into the review queue (writes nothing yet)")
+    p.add_argument("--db", required=True)
+    p.add_argument("--file", required=True)
+    p.add_argument("--fixtures", required=True, help="dir of <name>.md + <name>.delta.json pairs")
+    p.add_argument("--story-id", default=None)
+    p.set_defaults(func=_cmd_stage_story)
+
+    p = sub.add_parser("stage", help="review queue: list/show/apply/discard staged proposals")
+    p.add_argument("action", choices=["list", "show", "apply", "discard"])
+    p.add_argument("--db", required=True)
+    p.add_argument("--id", default=None, help="staging id for show/apply/discard")
+    p.add_argument("--status", default="pending", choices=["pending", "applied", "discarded"])
+    p.add_argument("--selection", default=None,
+                   help='JSON subset to apply, e.g. {"entities":[0],"claims":[0,1]}')
+    p.set_defaults(func=_cmd_stage)
 
     p = sub.add_parser("compile-context", help="compile a bounded context block for a query")
     p.add_argument("--db", required=True)

@@ -57,6 +57,7 @@
 </header>
 <div id="graph"><svg id="svg"></svg></div>
 <aside>
+  <div class="panel" id="inbox" style="display:none"><h2>Review inbox</h2></div>
   <div class="panel" id="detail"><h2>Entity</h2><div class="dim">Click a node.</div></div>
   <div class="panel" id="context" style="display:none"><h2>Compiled context preview</h2></div>
   <div class="panel" id="retrieval" style="display:none"><h2>Retrieval inspector</h2></div>
@@ -239,7 +240,70 @@ async function dropEntity(entityId){
   catch (e){ alert(e.message); }
 }
 
+async function loadInbox(){
+  const inbox = await api("/api/staged");
+  const panel = document.getElementById("inbox");
+  if (!inbox.length){ panel.style.display = "none"; return; }
+  panel.style.display = "";
+  panel.innerHTML = "<h2>Review inbox</h2>" +
+    '<div class="small dim">Proposed lore awaiting your approval. Nothing here has been written yet.</div>' +
+    inbox.map(s => `<div class="fact" style="flex-direction:column; align-items:flex-start">
+      <div><b>${esc(s.story_title || s.story_id || s.staging_id)}</b>
+        <span class="dim small">${s.counts.entities}ent ${s.counts.claims}cl ${s.counts.chunks}ch</span></div>
+      <button class="small" onclick="reviewStage('${esc(s.staging_id)}')">review &amp; apply</button>
+    </div>`).join("");
+}
+
+async function reviewStage(sid){
+  const s = await api("/api/staged/" + encodeURIComponent(sid));
+  const d = s.delta;
+  const section = (key, items, render) => !items.length ? "" :
+    `<div style="margin-top:8px"><b class="small">${key} (${items.length})</b>` +
+    items.map((it, i) => `<label class="fact small" style="gap:6px">
+      <input type="checkbox" checked data-key="${key}" data-i="${i}"> ${render(it)}</label>`).join("") + "</div>";
+  // Claims sorted by confidence (advisory) but checkbox index must map to the
+  // original delta order, so we annotate each with its true index.
+  const claimItems = d.claims.map((c, i) => ({c, i}))
+    .sort((a, b) => (b.c.confidence||0) - (a.c.confidence||0));
+  document.getElementById("detail").innerHTML = `
+    <h2>Review: ${esc(d.story_title || sid)}</h2>
+    <div class="small dim">Uncheck anything you don't want. Confidence is advisory only.</div>
+    ${section("entities", d.entities, e => `${esc(e.display_name)} <span class="dim">(${esc(e.kind)})</span>`)}
+    <div style="margin-top:8px"><b class="small">claims (${d.claims.length})</b>` +
+    claimItems.map(({c, i}) => `<label class="fact small" style="gap:6px">
+      <input type="checkbox" checked data-key="claims" data-i="${i}">
+      ${esc(c.subject_slug)} <b>${esc(c.predicate)}</b> ${esc(c.object_slug || c.object_literal || "")}
+      <span class="dim">${(c.confidence!=null)?c.confidence.toFixed(2):""}</span></label>`).join("") + `</div>
+    ${section("chunks", d.chunks, c => `${esc(c.title)} <span class="dim">[${esc(c.insertion_lane)}]</span>`)}
+    <div class="editrow">
+      <button onclick="applyStage('${esc(sid)}')">apply selected</button>
+      <button class="danger" onclick="discardStage('${esc(sid)}')">discard</button>
+    </div>`;
+}
+
+function collectSelection(){
+  const sel = {entities: [], claims: [], chunks: [], open_questions: []};
+  document.querySelectorAll("#detail input[type=checkbox]").forEach(cb => {
+    if (cb.checked) sel[cb.dataset.key].push(parseInt(cb.dataset.i, 10));
+  });
+  return sel;
+}
+async function applyStage(sid){
+  try {
+    await post(`/api/staged/${encodeURIComponent(sid)}/apply`, {selection: collectSelection()});
+    await loadGraph();
+    document.getElementById("detail").innerHTML = '<h2>Entity</h2><div class="dim">Applied. Click a node.</div>';
+  } catch (e){ alert("Apply failed: " + e.message); }
+}
+async function discardStage(sid){
+  if (!confirm("Discard this proposal? Nothing was written, so this just clears it.")) return;
+  try { await post(`/api/staged/${encodeURIComponent(sid)}/discard`); await loadGraph();
+        document.getElementById("detail").innerHTML = '<h2>Entity</h2><div class="dim">Discarded. Click a node.</div>'; }
+  catch (e){ alert(e.message); }
+}
+
 async function loadPanels(){
+  await loadInbox();
   const conflicts = await api("/api/conflicts");
   document.getElementById("conflicts").innerHTML = "<h2>Open conflicts</h2>" +
     (conflicts.length ? conflicts.map(c => `

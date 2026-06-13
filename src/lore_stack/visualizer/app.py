@@ -12,7 +12,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request
 
-from lore_stack import snapshots
+from lore_stack import snapshots, staging
 from lore_stack.db import connect, init_db
 
 from lore_stack.compiler import compile_context
@@ -371,6 +371,48 @@ def create_app(db_path: str | Path | None = None, *, home: str | Path | None = N
             return jsonify({"error": str(exc)}), 400
         c.close()
         return jsonify(out)
+
+    @app.get("/api/staged")
+    def list_staged_route():
+        c = conn()
+        out = staging.list_staged(c, status=request.args.get("status", "pending"))
+        c.close()
+        return jsonify(out)
+
+    @app.get("/api/staged/<staging_id>")
+    def get_staged_route(staging_id):
+        c = conn()
+        out = staging.get_staged(c, staging_id)
+        c.close()
+        if out is None:
+            return jsonify({"error": f"unknown stage {staging_id}"}), 404
+        return jsonify(out)
+
+    @app.post("/api/staged/<staging_id>/apply")
+    def apply_staged_route(staging_id):
+        body = request.get_json(silent=True) or {}
+        selection = body.get("selection")  # None -> apply everything
+        c = conn(auto_snapshot=True)
+        try:
+            report = staging.apply_staged(
+                c, staging_id, selection=selection, embedder=FakeEmbedder()
+            )
+        except staging.StagingError as exc:
+            c.close()
+            return jsonify({"error": str(exc)}), 400
+        c.close()
+        return jsonify(report.model_dump())
+
+    @app.post("/api/staged/<staging_id>/discard")
+    def discard_staged_route(staging_id):
+        c = conn()
+        try:
+            staging.discard_staged(c, staging_id)
+        except staging.StagingError as exc:
+            c.close()
+            return jsonify({"error": str(exc)}), 400
+        c.close()
+        return jsonify({"ok": True, "staging_id": staging_id})
 
     @app.get("/api/snapshots")
     def list_snapshots_route():

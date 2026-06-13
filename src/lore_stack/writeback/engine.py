@@ -105,10 +105,18 @@ def apply_delta(
     source_kind: str = "story",
     source_uri: Optional[str] = None,
     embedder: Optional[Embedder] = None,
+    reviewed: bool = False,
 ) -> WritebackReport:
     """Apply one validated LoreDelta inside a single transaction.
 
     Any failure rolls back completely: no partial writes.
+
+    reviewed=True is the human-approved path (workstream D): the operator vetted
+    every claim, so confidence stops being a gate -- approved claims always form
+    soft facts, and promotion to canonical needs only corroboration across >=2
+    distinct stories (a count), not a confidence threshold. The default
+    (reviewed=False) keeps the legacy 0.7/0.9 thresholds for the direct-ingest
+    path used by fixtures and tests.
     """
     checksum = delta_checksum(delta)
     existing = conn.execute(
@@ -123,14 +131,14 @@ def apply_delta(
     try:
         with conn:
             _apply_inner(conn, delta, checksum, story_text, source_kind, source_uri,
-                         embedder, report, now)
+                         embedder, report, now, reviewed)
     except sqlite3.IntegrityError as exc:
         raise WritebackError(f"delta violates a database constraint: {exc}") from exc
     return report
 
 
 def _apply_inner(conn, delta, checksum, story_text, source_kind, source_uri,
-                 embedder, report, now) -> None:
+                 embedder, report, now, reviewed=False) -> None:
     source_id = f"src_{checksum[:12]}"
     conn.execute(
         "INSERT INTO sources (source_id, source_kind, uri, checksum, created_at)"
@@ -199,7 +207,7 @@ def _apply_inner(conn, delta, checksum, story_text, source_kind, source_uri,
 
     # --- claims -> facts ---
     for idx, claim in enumerate(delta.claims):
-        _apply_claim(conn, delta.story_id, idx, claim, report, now)
+        _apply_claim(conn, delta.story_id, idx, claim, report, now, reviewed)
 
     # --- chunks ---
     for idx, chunk in enumerate(delta.chunks):
@@ -227,7 +235,7 @@ def _apply_inner(conn, delta, checksum, story_text, source_kind, source_uri,
 
 
 def _apply_claim(conn, story_id: str, idx: int, claim: ClaimInput,
-                 report: WritebackReport, now: str) -> None:
+                 report: WritebackReport, now: str, reviewed: bool = False) -> None:
     from lore_stack import registry  # lazy import: breaks the engine<->registry cycle
 
     claim_id = f"clm_{_short_hash(story_id, str(idx))}"
@@ -312,7 +320,7 @@ def _apply_claim(conn, story_id: str, idx: int, claim: ClaimInput,
             match["status"] == "soft"
             and claim.canonicality_hint == "candidate"
             and corroborated
-            and new_conf >= PROMOTION_CONFIDENCE
+            and (reviewed or new_conf >= PROMOTION_CONFIDENCE)  # reviewed: count-only
             and pred_info is not None  # only registered predicates auto-canonize
             and not blocks_promotion
         ):
@@ -352,9 +360,10 @@ def _apply_claim(conn, story_id: str, idx: int, claim: ClaimInput,
         return
 
     # No exact match (and for multi-valued predicates, no blocking conflict):
-    # soft facts coexist.
+    # soft facts coexist. A reviewed (human-approved) claim always forms a soft
+    # fact; the legacy path requires the confidence floor.
     write_claim("candidate", subject_id)
-    if claim.confidence >= SOFT_FACT_CONFIDENCE:
+    if reviewed or claim.confidence >= SOFT_FACT_CONFIDENCE:
         _insert_fact(conn, subject_id, claim, object_entity_id, "soft",
                      story_id, claim_id, now, report, predicate)
 
