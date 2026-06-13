@@ -7,3 +7,12 @@ __pycache__/
 build/
 dist/
 demo/
+# Runtime lore artifacts (never commit working databases or their history)
+*.db
+*.sqlite
+*.sqlite3
+.snapshots/
+.frozen/
+/lores/
+# Secrets / local env
+.env

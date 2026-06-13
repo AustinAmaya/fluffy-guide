@@ -58,12 +58,30 @@ the original 0.7/0.9 confidence thresholds.
 ## Predicate registry (controlled vocabulary)
 
 `db/predicates.json` seeds a registry that turns free-text predicates into a
-governed ontology. Each predicate declares a **cardinality** (single vs
-multi-valued), a **persistence** class, and **aliases**. Effects: `occupation`
-normalizes to `profession` so synonyms corroborate; multi-valued predicates
-(`carries`, `visits`) coexist instead of falsely conflicting; unregistered
-predicates can form soft facts but never auto-canonize; operator manual edits
-auto-register their predicate.
+governed ontology. Each predicate declares a **range** (`entity` = a graph edge,
+`text` = a literal attribute), a **cardinality** (single vs multi-valued), a
+**persistence** class, and **aliases**. Two vocabularies, governed differently:
+
+- **Relationships** (`range: entity`) are a **closed, fixed set of 11
+  child-legible edges** — `family_of`, `friends_with`, `against`, `mentors`,
+  `serves`, `leads`, `belongs_to`, `lives_in`, `visits`, `wants`, `linked_to`. An
+  entity-object claim whose predicate is off the set (or a text predicate misused
+  with an entity object) is **rejected** at writeback — the claim is stored
+  `rejected`, forms no fact, and the rest of the delta still applies — and an
+  operator edit cannot mint a new edge type. Aliases still normalize in
+  (`resents` → `against`, `taught_by` → `serves`), but direction-reversing verbs
+  are flipped at authoring, not aliased (`X keeps Y` → `Y belongs_to X`).
+- **Attributes** (`range: text`, e.g. `profession`, `species`, `carries`) are an
+  **open** vocabulary: `occupation` normalizes to `profession` so synonyms
+  corroborate; multi-valued predicates (`carries`) coexist instead of falsely
+  conflicting; an unregistered attribute can form soft facts but never
+  auto-canonizes; operator manual edits auto-register it.
+
+The rule of thumb: an **edge** ties two named beings that could change later (who
+loves whom, who's family, whose toy); a fact about *one* thing (its job, species,
+colour) is an **attribute**; scenery (a part in a machine, honey in a tree) is
+**prose** in a description, no fact at all. *A lens does not have a social life.*
+See the "Relationship ontology" section of `docs/USER_GUIDE.md`.
 
 ## Snapshots & merge suggestions
 
@@ -169,10 +187,11 @@ fact; delete = soft deprecate).
   order, never a clock.
 - All IDs are content-derived; identical inputs produce identical DB states
   (timestamps aside) and **byte-identical** compiled contexts.
-- Token estimation is `ceil(len(text)/4)`. Lane budgets: character_card 400,
-  world_info 350, relationships 250, open_hooks 250, recent_continuity 450
-  (global 1700, CLI-overridable). Over-budget chunks are dropped whole, by
-  priority — never truncated mid-fact.
+- Token estimation is `ceil(len(text)/4)`. Lane budgets: character_card 1000,
+  world_info 1200, relationships 1200, open_hooks 800, recent_continuity 1800
+  (global 6000, CLI-overridable) — sized for a large-context story model, ~0.6%
+  of a 1M window. Over-budget chunks are dropped whole, by priority — never
+  truncated mid-fact.
 
 ## Hermes integration
 

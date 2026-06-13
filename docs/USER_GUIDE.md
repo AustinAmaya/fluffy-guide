@@ -1,0 +1,359 @@
+# lore-stack — User Guide
+
+How to do everything. lore-stack is a deterministic lore-memory substrate: it
+remembers the people, places, things, and relationships in your stories, keeps
+them consistent, and hands a story model a tight, relevant context block on
+request. There is no LLM in the loop unless you wire one into a seam — the
+substrate is plain Python over SQLite.
+
+This guide is task-oriented. For the design rationale see the README and
+`CLAUDE.md`; for the deep ontology, the project's ontology specification.
+
+---
+
+## 1. Install and first run
+
+```bash
+python -m venv .venv
+.venv/Scripts/pip install -e ".[dev]"          # Windows; .venv/bin on POSIX
+
+lore-stack init-db --db lore.db                 # create the schema
+lore-stack ingest-delta --db lore.db \
+  --file examples/lores/winnie-the-pooh/01_pooh_and_some_bees.delta.json
+lore-stack compile-context --db lore.db --query "Tell a story with Pooh"
+lore-stack serve --db lore.db                   # visualizer at http://127.0.0.1:8377
+```
+
+`lore-stack <command> --help` documents any command. Everything the visualizer
+and the Hermes skill do is also available on this CLI.
+
+The fastest way to see the whole system live is the demo, which seeds and freezes
+four example worlds and opens the visualizer:
+
+```bash
+powershell -ExecutionPolicy Bypass -File demo.ps1
+```
+
+---
+
+## 2. Core concepts
+
+- **Entity** — the only first-class thing: a `character`, `location`, `item`,
+  `organization`, `event`, or `concept`. Identity is a normalized slug; surface
+  names and nicknames are **aliases** that resolve to one entity and never fork it.
+- **Claim** — a raw observation from one story: `(subject, predicate, object)`
+  with a quoted evidence excerpt and a confidence. Claims are the append-only lab
+  notebook; they are never edited.
+- **Fact** — a distilled, usable assertion derived from claims. Facts have a
+  status: `soft` (believed, single source) → `canonical` (corroborated) , plus
+  `motif` (recurring joke, never canon) and `deprecated` (soft-deleted history).
+  Every fact carries provenance, enforced by the database.
+- **Lore** — one self-contained SQLite world, fully isolated from every other.
+  The lore you select **is** the unit of narrative connection (see §9).
+- **Chunk** — a piece of authored prose (a character card, a world note, an open
+  hook, a continuity summary) tagged with an insertion lane. Chunks are what the
+  compiler actually packs into a context block.
+
+### Claim → fact lifecycle
+
+```
+claim (conf >= 0.7) ──▶ soft ──corroborated by a 2nd story──▶ canonical
+                         │                                       │
+motif-hinted claim ──▶ motif (terminal)                          │
+                         └──────────── deprecated ◀──────────────┘
+                              (soft delete / superseded by a manual edit)
+```
+
+A contradiction of a canonical fact never overwrites it — it opens an
+adjudication item for you to resolve. Operator edits bypass the pipeline:
+immediately canonical, prior value preserved as deprecated history.
+
+---
+
+## 3. The relationship ontology (read this before authoring lore)
+
+The audience is a six-year-old, so the **relationship** vocabulary is small,
+closed, and fixed. Predicates come in two kinds, governed differently:
+
+### Relationships — a closed set of 11 (range: entity)
+
+A relationship is an edge to **another entity**. There are exactly eleven, all
+multi-valued:
+
+| id | child-legible meaning | direction |
+|----|------------------------|-----------|
+| `family_of` | "they're family" | symmetric |
+| `friends_with` | "friends / like each other" (absorbs trust & love) | symmetric |
+| `against` | "doesn't get along / is the baddie to" | disliker → disliked |
+| `mentors` | "teaches & looks after" | teacher → student |
+| `serves` | "works for / helps / apprentice of" | helper → leader |
+| `leads` | "is in charge of / boss of" | leader → led |
+| `belongs_to` | "this thing/pet is someone's" | thing → owner |
+| `lives_in` | "lives/stays in a place" (also place-in-place) | resident → place |
+| `visits` | "goes to / travels to a place" | visitor → place |
+| `wants` | "really wants / is after a thing or person" | wanter → wanted |
+| `linked_to` | catch-all: "connected some other way" (only if none fit) | symmetric |
+
+Aliases normalize in automatically (`resents` → `against`, `friend_of`/`trusts` →
+`friends_with`, `resides_in` → `lives_in`, `apprentices_to`/`taught_by` →
+`serves`, `sibling_of` → `family_of`, …). But **direction-reversing verbs are
+flipped when you author, not aliased**, because an alias can't reverse an arrow:
+
+- ownership: `Mirel keeps the inn` → `the-inn belongs_to mirel`
+- teaching: `Boxwell taught_by Gregor` → `gregor mentors boxwell`
+
+An entity-object claim whose predicate is **not** one of the eleven — or a text
+attribute misused with an entity object — is **rejected** at writeback: the claim
+is stored `rejected`, no fact forms, and the rest of the delta still applies. An
+operator edit likewise can't mint a new edge type. To extend the set, add it to
+`src/lore_stack/db/predicates.json` deliberately (the 12th slot is reserved for a
+future `made_by` if "who built this" ever becomes a recurring edge).
+
+### Attributes — an open vocabulary (range: text)
+
+A fact about **one** entity, whose object is a literal string: `profession`,
+`species`, `carries`, `has_trait`, `claimed_title`, … These are open: an
+unregistered attribute still forms a soft fact (it just can't auto-canonize), and
+an operator edit auto-registers it. Synonyms normalize (`occupation` →
+`profession`).
+
+### Edge vs attribute vs prose — the authoring rule
+
+> Make it an **edge** only if it ties *two* named beings a child would point at
+> twice and that could change later (who loves whom, who's family, who's the
+> baddie, who lives where, whose toy, who leads whom). A fact about *one* thing —
+> its job, species, colour, name — is an **attribute**. Mere *scenery* — a part
+> fitted into a machine, honey sitting in a tree, a bell hanging in a room — is
+> **prose**: write it in the entity's description and create no fact at all.
+> *A lens does not have a social life.* Items relate to people through
+> `belongs_to` / `wants`, not to other items.
+
+---
+
+## 4. The primary workflow: stage → review → downselect → apply
+
+Automatic extraction over-produces, so the main path writes **nothing** to the
+lore until you approve it. Stage a story (extract into a review queue), look at
+what it proposes, uncheck the noise, and apply the subset.
+
+```bash
+# 1. Stage (writes nothing to the lore yet)
+lore-stack stage-story --db lore.db --file story.md --fixtures tests/fixtures/stories
+
+# 2. Review the queue
+lore-stack stage list --db lore.db
+lore-stack stage show --db lore.db --id stg_000001
+
+# 3. Apply only the items you want (0-based indices per section)
+lore-stack stage apply --db lore.db --id stg_000001 \
+  --selection '{"entities":[0],"claims":[0,2],"chunks":[]}'
+
+# or discard the whole proposal
+lore-stack stage discard --db lore.db --id stg_000001
+```
+
+In the visualizer this is the **Inbox** panel: checkboxes per proposed item, an
+Apply-selected button, and Discard.
+
+On this reviewed path a human's approval replaces the confidence gate: approved
+claims always form soft facts, and promotion to canonical is corroboration-count
+only (≥2 distinct stories), regardless of the model's self-reported confidence.
+
+### Direct ingest (fixtures, scripts, trusted deltas)
+
+When you already trust a delta, skip review:
+
+```bash
+lore-stack ingest-delta  --db lore.db --file story.delta.json [--story-text story.md]
+lore-stack ingest-story  --db lore.db --file story.md --fixtures tests/fixtures/stories
+```
+
+The direct path keeps the original confidence thresholds (soft ≥ 0.7, promote ≥
+0.9). Re-applying a delta with an already-seen checksum is a detectable no-op.
+
+---
+
+## 5. Compiling a context block
+
+Hand a story model exactly the lore it needs for the next scene:
+
+```bash
+lore-stack compile-context --db lore.db --query "Tell another story with Boxwell"
+lore-stack compile-context --db lore.db --query "..." --json --out context.json
+lore-stack compile-context --db lore.db --query "..." --budget 3000
+```
+
+The output leads with a primary `=== CONTEXT FOR: <entities> ===` header, then
+lane sections (`## Character card`, `## World info`, `## Relationships`,
+`## Open hooks`, `## Recent continuity`). It is bounded by per-lane token budgets
+(global 6000, overridable); over-budget chunks are dropped whole by priority,
+never truncated mid-fact. Output is **byte-identical** for the same DB + query,
+and every compile writes an auditable `compiler_runs` row.
+
+A query that names a character is the target. A query that names nobody in a
+populated lore returns that lore's recent continuity, clearly labeled as optional
+connective tissue (so a brand-new character can be woven into existing threads).
+The same query in a brand-new empty lore returns nothing.
+
+---
+
+## 6. Inspecting and exporting
+
+```bash
+lore-stack inspect entity    --db lore.db --slug boxwell   # entity + aliases + facts + chunks
+lore-stack inspect conflicts --db lore.db                  # open adjudication items
+lore-stack inspect motifs    --db lore.db                  # motif facts
+lore-stack inspect stories   --db lore.db                  # ingested stories
+
+lore-stack export --db lore.db --format markdown           # whole lore
+lore-stack export --db lore.db --entity boxwell            # one entity + 1-hop neighbors (JSON)
+```
+
+---
+
+## 7. Editing, deleting, restoring (the human-authoritative carve-outs)
+
+Operator edits are immediately canonical and bypass adjudication; the prior value
+is preserved as deprecated history. All deletes are soft.
+
+```bash
+# attribute edit (open vocabulary, auto-registers a new predicate)
+lore-stack edit-fact --db lore.db --entity-id ent_boxwell --predicate profession --value horologist
+
+# relationship edit (must use one of the 11 closed predicates; object is an entity)
+lore-stack edit-fact --db lore.db --entity-id ent_the-brambled-inn --predicate belongs_to \
+  --object-entity-id ent_mirel
+
+lore-stack deprecate --db lore.db --entity-id ent_boxwell    # soft delete (cascades to facts/chunks)
+lore-stack deprecate --db lore.db --fact-id  fct_xxxx
+lore-stack deprecate --db lore.db --chunk-id chk_xxxx
+lore-stack restore   --db lore.db --entity-id ent_boxwell    # un-delete (returns as provisional)
+```
+
+A relationship edit with an unregistered predicate is rejected — relationships
+are a closed set.
+
+---
+
+## 8. Conflicts and merge suggestions
+
+Two ways the system asks for a human decision, both surfaced in the visualizer's
+**Conflicts** panel (and via `inspect conflicts`):
+
+- **Contradiction** — a story asserts a value that conflicts with a canonical
+  single-valued fact (e.g. "Boxwell is a baker" vs canon "clockmaker"). Canon is
+  untouched; you resolve by keeping the existing value or accepting the proposed
+  one (which flips canon via the authoritative edit path).
+- **Merge suggestion** — a new soft fact's object is embedding-similar (cosine ≥
+  0.5) to an existing value on the same subject+predicate (e.g. "cedar tool case"
+  ~ "a cedar case of tools"). Never auto-merged; you pick which value survives and
+  the other becomes deprecated history.
+
+Both resolve with one click in the UI, or through the API (`POST
+/api/conflicts/<id>/resolve`, `POST /api/merge/<id>/resolve`).
+
+---
+
+## 9. Lores: isolated worlds
+
+A lore is one SQLite database, fully isolated. Point the server at a **lore home**
+directory to keep several and switch between them in the UI.
+
+```bash
+lore-stack lores create --home lores --name middlemarsh
+lore-stack lores copy   --home lores --from middlemarsh --to middlemarsh-draft   # independent copy
+lore-stack lores list   --home lores
+lore-stack serve        --home lores            # UI dropdown + "+ lore" / "copy lore"
+```
+
+Every CLI command targets a lore with `--db lores/<name>.db`; every API call in
+home mode selects one with `?lore=<name>`.
+
+### Frozen baselines and full reset
+
+Freeze a pristine baseline (DB **and** snapshot history) you can play against and
+hard-reset to:
+
+```bash
+lore-stack lores freeze --home lores --name harrow-hollow   # capture the baseline
+lore-stack lores reset  --home lores --name harrow-hollow   # full hard restore to it
+```
+
+`reset` reverts **everything** since the freeze (content and history); the
+baseline is the recovery point, so there's no pre-reset snapshot. In the UI a
+"reset to frozen" button appears only for frozen lores, behind a strong confirm.
+
+---
+
+## 10. Snapshots and rollback
+
+Every mutating operation auto-snapshots the lore first.
+
+```bash
+lore-stack snapshot list     --db lore.db
+lore-stack snapshot create   --db lore.db --label "before big edit"
+lore-stack snapshot rollback --db lore.db --seq 7      # itself saves a pre-rollback snapshot
+```
+
+In the visualizer's **History** panel each entry can be **previewed** read-only
+(loads that snapshot's graph without mutating the live lore) before you roll back.
+
+---
+
+## 11. The visualizer
+
+`lore-stack serve` runs a local Flask JSON API plus a single-file, fully offline
+frontend (vanilla JS + SVG, no CDN). Panels:
+
+- **Graph** — entities colored by kind; relationship facts drawn as directed
+  edges; pan (drag), zoom (scroll), and a home/deselect control.
+- **Entity detail** — summary, aliases, facts with provenance drilldown
+  (extracted lineage or manual source), and bound chunks.
+- **Inbox** — staged proposals to review, downselect, and apply or discard.
+- **Conflicts** — contradictions and merge suggestions, each with one-click
+  resolution.
+- **Motifs** — recurring jokes/titles, shown but never asserted as canon.
+- **Retrieval inspector** — type a query and see the candidate chunks with their
+  scores and the reasons each was selected.
+- **Context preview** — the compiled block for a query, with per-chunk traces.
+- **History** — snapshots with read-only preview and rollback; "reset to frozen"
+  for frozen lores.
+- **Lore switcher** (home mode) — dropdown, "+ lore", "copy lore".
+
+Writes from the UI are the same two authoritative carve-outs: edit = canonical
+manual fact, delete = soft deprecate.
+
+---
+
+## 12. The deterministic gate
+
+```bash
+.venv/Scripts/python -m pytest -m "not model"
+```
+
+This must be green and byte-for-byte repeatable. It covers ingest, corroboration,
+alias resolution, the closed relationship set, contradiction handling, retrieval,
+budget enforcement, the invariant suite, Hypothesis property tests, adversarial
+inputs, golden-file + byte-determinism, and the visualizer API. Live-model tests
+carry the `model` marker and are excluded.
+
+---
+
+## Command reference
+
+| Command | What it does |
+|---|---|
+| `init-db --db` | Create the schema (idempotent migrations + registry seed). |
+| `ingest-delta --db --file [--story-text]` | Validate and write back a `LoreDelta` JSON (direct path). |
+| `ingest-story --db --file --fixtures [--story-id]` | Extract (FakeExtractor) + write back a story file. |
+| `stage-story --db --file --fixtures [--story-id]` | Extract a story into the review queue (writes nothing). |
+| `stage list\|show\|apply\|discard --db [--id] [--selection] [--status]` | Drive the review queue. |
+| `compile-context --db --query [--budget] [--out] [--json]` | Compile a bounded context block. |
+| `inspect entity\|conflicts\|motifs\|stories --db [--slug]` | Inspect lore state. |
+| `edit-fact --db --entity-id --predicate [--value] [--object-entity-id]` | Authoritative manual edit. |
+| `deprecate --db [--entity-id] [--fact-id] [--chunk-id]` | Soft-delete. |
+| `restore --db --entity-id` | Reverse a soft delete of an entity. |
+| `export --db [--entity] [--format json\|markdown]` | Export the subgraph. |
+| `serve [--db \| --home] [--port]` | Run the local visualizer. |
+| `lores list\|create\|copy\|freeze\|reset --home [--name] [--from] [--to]` | Lore lifecycle. |
+| `snapshot create\|list\|rollback --db [--seq] [--label]` | Point-in-time history. |
