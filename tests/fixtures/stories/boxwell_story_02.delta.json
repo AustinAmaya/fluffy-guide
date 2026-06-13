@@ -1,0 +1,59 @@
+{
+  "story_id": "story_boxwell_02",
+  "story_title": "The Regulator's Apprentice",
+  "story_summary": "Boxwell returns to repair the church regulator at Harrow Fen, corroborating that he is a patient travelling clockmaker who carries his teacher's cedar tool case.",
+  "entities": [
+    {
+      "slug": "boxwell",
+      "display_name": "Boxwell",
+      "kind": "character",
+      "aliases": ["the clockmaker"],
+      "summary": "A patient travelling clockmaker who carries a cedar case of tools.",
+      "confidence": 0.99,
+      "evidence_excerpt": "A clockmaker's reputation travels faster than a clockmaker."
+    },
+    {
+      "slug": "harrow-fen",
+      "display_name": "Harrow Fen",
+      "kind": "location",
+      "aliases": ["the village"],
+      "summary": "A fog-bound village with a church regulator clock.",
+      "confidence": 0.88,
+      "evidence_excerpt": "the village of Harrow Fen had been waiting for him"
+    }
+  ],
+  "claims": [
+    {
+      "subject_slug": "boxwell",
+      "predicate": "profession",
+      "object_literal": "clockmaker",
+      "confidence": 0.97,
+      "importance": "high",
+      "canonicality_hint": "candidate",
+      "evidence_excerpt": "When a boy asked how long he had been a clockmaker..."
+    },
+    {
+      "subject_slug": "boxwell",
+      "predicate": "carries",
+      "object_literal": "cedar tool case",
+      "confidence": 0.93,
+      "importance": "medium",
+      "canonicality_hint": "candidate",
+      "evidence_excerpt": "cedar case strapped to his back"
+    }
+  ],
+  "chunks": [
+    {
+      "title": "Continuity: The Regulator's Apprentice",
+      "body": "Previous story summary: Boxwell repaired the church regulator at Harrow Fen and revealed the cedar tool case belonged to his teacher.",
+      "activation_keys": ["boxwell", "harrow fen", "regulator"],
+      "retrieval_mode": "hybrid",
+      "insertion_lane": "recent_continuity",
+      "priority": 510,
+      "entity_slug": "boxwell"
+    }
+  ],
+  "open_questions": [
+    "Who was Boxwell's teacher?"
+  ]
+}

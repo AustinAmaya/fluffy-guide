@@ -1,0 +1,96 @@
+{
+  "story_id": "story_boxwell_01",
+  "story_title": "The Cedar Case",
+  "story_summary": "Boxwell, a travelling clockmaker, arrives at the rain-soaked Brambled Inn and discovers that the stopped hallway clock may conceal a message.",
+  "entities": [
+    {
+      "slug": "boxwell",
+      "display_name": "Boxwell",
+      "kind": "character",
+      "aliases": ["the clockmaker"],
+      "summary": "A patient travelling clockmaker who carries a cedar case of tools.",
+      "confidence": 0.98,
+      "evidence_excerpt": "Boxwell laid his cedar case beside the stopped hallway clock."
+    },
+    {
+      "slug": "the-brambled-inn",
+      "display_name": "The Brambled Inn",
+      "kind": "location",
+      "aliases": ["the inn"],
+      "summary": "A weathered roadside inn with a stopped hallway clock.",
+      "confidence": 0.91,
+      "evidence_excerpt": "The Brambled Inn had kept the same stopped clock for twenty years."
+    }
+  ],
+  "claims": [
+    {
+      "subject_slug": "boxwell",
+      "predicate": "profession",
+      "object_literal": "clockmaker",
+      "confidence": 0.96,
+      "importance": "high",
+      "canonicality_hint": "candidate",
+      "evidence_excerpt": "Everyone in three counties knew Boxwell as a clockmaker."
+    },
+    {
+      "subject_slug": "boxwell",
+      "predicate": "carries",
+      "object_literal": "cedar tool case",
+      "confidence": 0.89,
+      "importance": "medium",
+      "canonicality_hint": "candidate",
+      "evidence_excerpt": "He never travelled without the cedar case."
+    },
+    {
+      "subject_slug": "boxwell",
+      "predicate": "visits",
+      "object_slug": "the-brambled-inn",
+      "confidence": 0.95,
+      "importance": "medium",
+      "canonicality_hint": "candidate",
+      "evidence_excerpt": "By dusk, Boxwell reached the Brambled Inn."
+    }
+  ],
+  "chunks": [
+    {
+      "title": "Boxwell card",
+      "body": "Boxwell is a quiet travelling clockmaker known for patient repairs and a cedar case of tools.",
+      "activation_keys": ["boxwell", "clockmaker", "cedar case"],
+      "retrieval_mode": "hybrid",
+      "insertion_lane": "character_card",
+      "priority": 1000,
+      "entity_slug": "boxwell"
+    },
+    {
+      "title": "The Brambled Inn",
+      "body": "The Brambled Inn is a weathered roadside inn whose hallway clock has been stopped for twenty years.",
+      "activation_keys": ["brambled inn", "hallway clock", "inn"],
+      "retrieval_mode": "hybrid",
+      "insertion_lane": "world_info",
+      "priority": 800,
+      "entity_slug": "the-brambled-inn"
+    },
+    {
+      "title": "Open hook from The Cedar Case",
+      "body": "The stopped hallway clock at the Brambled Inn may hide a message in its missing escapement spring.",
+      "activation_keys": ["boxwell", "brambled inn", "hallway clock", "escapement spring"],
+      "retrieval_mode": "hybrid",
+      "insertion_lane": "open_hooks",
+      "priority": 850,
+      "entity_slug": "boxwell"
+    },
+    {
+      "title": "Continuity: The Cedar Case",
+      "body": "Previous story summary: Boxwell arrived at the Brambled Inn during heavy rain and found the hallway clock's escapement spring had been removed deliberately.",
+      "activation_keys": ["boxwell", "brambled inn"],
+      "retrieval_mode": "hybrid",
+      "insertion_lane": "recent_continuity",
+      "priority": 500,
+      "entity_slug": "boxwell"
+    }
+  ],
+  "open_questions": [
+    "Who removed the escapement spring from the hallway clock?",
+    "What message might the stopped clock conceal?"
+  ]
+}

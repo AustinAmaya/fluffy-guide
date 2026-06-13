@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lore-stack"
+version = "0.1.0"
+description = "Deterministic lore-memory substrate: SQLite-backed ingest, conservative canonization, hybrid retrieval, and bounded context compilation."
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.5",
+    "flask>=3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "hypothesis>=6",
+]
+
+[project.scripts]
+lore-stack = "lore_stack.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+lore_stack = ["db/schema.sql", "visualizer/static/*", "hermes/*.md", "hermes/scripts/*"]
+
+[tool.pytest.ini_options]
+addopts = ["--strict-markers", "-ra"]
+markers = [
+    "model: live or recorded model tests (excluded from the deterministic gate)",
+]
+testpaths = ["tests"]

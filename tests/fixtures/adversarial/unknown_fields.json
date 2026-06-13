@@ -1,0 +1,11 @@
+{
+  "story_id": "story_unknown_fields",
+  "story_title": "Sneaky extras",
+  "story_summary": "A delta with fields the contract does not define.",
+  "entities": [],
+  "claims": [],
+  "chunks": [],
+  "open_questions": [],
+  "totally_unknown_field": true,
+  "another_surprise": {"nested": "value"}
+}

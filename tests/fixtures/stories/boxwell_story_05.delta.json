@@ -1,0 +1,31 @@
+{
+  "story_id": "story_boxwell_05",
+  "story_title": "The Baker of Bellwether Lane",
+  "story_summary": "A story asserting, contrary to established canon, that Boxwell is a baker on Bellwether Lane.",
+  "entities": [
+    {
+      "slug": "boxwell",
+      "display_name": "Boxwell",
+      "kind": "character",
+      "aliases": [],
+      "summary": "Claimed by Bellwether Lane to be their baker.",
+      "confidence": 0.95,
+      "evidence_excerpt": "In Bellwether Lane they swore Boxwell was a baker."
+    }
+  ],
+  "claims": [
+    {
+      "subject_slug": "boxwell",
+      "predicate": "profession",
+      "object_literal": "baker",
+      "confidence": 0.9,
+      "importance": "high",
+      "canonicality_hint": "candidate",
+      "evidence_excerpt": "they swore Boxwell was a baker, and always had been"
+    }
+  ],
+  "chunks": [],
+  "open_questions": [
+    "Why does Bellwether Lane believe Boxwell is a baker?"
+  ]
+}

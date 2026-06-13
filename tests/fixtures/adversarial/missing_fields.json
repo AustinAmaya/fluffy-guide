@@ -1,0 +1,10 @@
+{
+  "story_title": "No story_id here",
+  "entities": [
+    {
+      "slug": "ghost",
+      "display_name": "Ghost",
+      "kind": "character"
+    }
+  ]
+}

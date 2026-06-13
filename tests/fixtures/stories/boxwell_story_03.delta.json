@@ -1,0 +1,48 @@
+{
+  "story_id": "story_boxwell_03",
+  "story_title": "The Old Clockmaker's Detour",
+  "story_summary": "Referred to only as 'the clockmaker', Boxwell passes through Whitmoor repairing a music box; the story never uses his name.",
+  "entities": [
+    {
+      "slug": "the-clockmaker",
+      "display_name": "the clockmaker",
+      "kind": "character",
+      "aliases": ["the old clockmaker", "Boxwell"],
+      "summary": "A travelling clockmaker working through Whitmoor, known by trade rather than name.",
+      "confidence": 0.92,
+      "evidence_excerpt": "\"The clockmaker is here,\" the miller's wife called down the lane."
+    },
+    {
+      "slug": "whitmoor",
+      "display_name": "Whitmoor",
+      "kind": "location",
+      "aliases": [],
+      "summary": "A mill village on Boxwell's circuit.",
+      "confidence": 0.85,
+      "evidence_excerpt": "They did not use his name in Whitmoor."
+    }
+  ],
+  "claims": [
+    {
+      "subject_slug": "the-clockmaker",
+      "predicate": "visits",
+      "object_slug": "whitmoor",
+      "confidence": 0.9,
+      "importance": "low",
+      "canonicality_hint": "candidate",
+      "evidence_excerpt": "The old clockmaker worked through the afternoon."
+    }
+  ],
+  "chunks": [
+    {
+      "title": "Continuity: The Old Clockmaker's Detour",
+      "body": "Previous story summary: the clockmaker repaired a silent music box in Whitmoor and left without giving his name.",
+      "activation_keys": ["clockmaker", "whitmoor", "music box"],
+      "retrieval_mode": "hybrid",
+      "insertion_lane": "recent_continuity",
+      "priority": 505,
+      "entity_slug": "the-clockmaker"
+    }
+  ],
+  "open_questions": []
+}

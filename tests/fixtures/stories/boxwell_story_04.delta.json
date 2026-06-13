@@ -1,0 +1,66 @@
+{
+  "story_id": "story_boxwell_04",
+  "story_title": "The Kitchen Regulator",
+  "story_summary": "Boxwell quietly repairs the Brambled Inn's kitchen regulator without payment, earning the lasting trust of Mirel, the innkeeper.",
+  "entities": [
+    {
+      "slug": "boxwell",
+      "display_name": "Boxwell",
+      "kind": "character",
+      "aliases": ["the clockmaker"],
+      "summary": "A patient travelling clockmaker who carries a cedar case of tools.",
+      "confidence": 0.98,
+      "evidence_excerpt": "she found Boxwell at the workbench anyway"
+    },
+    {
+      "slug": "mirel",
+      "display_name": "Mirel",
+      "kind": "character",
+      "aliases": ["the innkeeper"],
+      "summary": "The discreet innkeeper of the Brambled Inn.",
+      "confidence": 0.94,
+      "evidence_excerpt": "Mirel kept the Brambled Inn the way her mother had."
+    }
+  ],
+  "claims": [
+    {
+      "subject_slug": "mirel",
+      "predicate": "trusts",
+      "object_slug": "boxwell",
+      "confidence": 0.92,
+      "importance": "high",
+      "canonicality_hint": "candidate",
+      "evidence_excerpt": "the innkeeper Mirel trusted Boxwell's discretion entirely"
+    },
+    {
+      "subject_slug": "mirel",
+      "predicate": "keeps",
+      "object_slug": "the-brambled-inn",
+      "confidence": 0.93,
+      "importance": "medium",
+      "canonicality_hint": "candidate",
+      "evidence_excerpt": "Mirel kept the Brambled Inn the way her mother had."
+    }
+  ],
+  "chunks": [
+    {
+      "title": "Mirel and Boxwell",
+      "body": "The innkeeper Mirel trusts Boxwell's discretion after he repaired the kitchen regulator without asking payment.",
+      "activation_keys": ["boxwell", "mirel", "innkeeper", "brambled inn"],
+      "retrieval_mode": "hybrid",
+      "insertion_lane": "relationships",
+      "priority": 700,
+      "entity_slug": "mirel"
+    },
+    {
+      "title": "Continuity: The Kitchen Regulator",
+      "body": "Previous story summary: Boxwell repaired the Brambled Inn's kitchen regulator for free, and Mirel now keeps the corner room ready for him.",
+      "activation_keys": ["boxwell", "mirel", "brambled inn"],
+      "retrieval_mode": "hybrid",
+      "insertion_lane": "recent_continuity",
+      "priority": 520,
+      "entity_slug": "boxwell"
+    }
+  ],
+  "open_questions": []
+}

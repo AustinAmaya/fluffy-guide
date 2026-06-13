@@ -1,0 +1,29 @@
+{
+  "story_id": "story_boxwell_06",
+  "story_title": "The Mayor of the Mantelpiece",
+  "story_summary": "Boxwell's recurring joke: he introduces himself as 'Mayor of the Mantelpiece'. A motif, not canon.",
+  "entities": [
+    {
+      "slug": "boxwell",
+      "display_name": "Boxwell",
+      "kind": "character",
+      "aliases": [],
+      "summary": "A travelling clockmaker fond of a recurring joke title.",
+      "confidence": 0.97,
+      "evidence_excerpt": "he would bow and declare himself Mayor of the Mantelpiece"
+    }
+  ],
+  "claims": [
+    {
+      "subject_slug": "boxwell",
+      "predicate": "claimed_title",
+      "object_literal": "Mayor of the Mantelpiece",
+      "confidence": 0.85,
+      "importance": "low",
+      "canonicality_hint": "motif",
+      "evidence_excerpt": "he would bow and declare himself Mayor of the Mantelpiece"
+    }
+  ],
+  "chunks": [],
+  "open_questions": []
+}
