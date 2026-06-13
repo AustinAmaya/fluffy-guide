@@ -18,7 +18,14 @@
                  border-radius:4px; padding:6px 10px; cursor:pointer; }
   header button:hover, .panel button:hover { background:#39435a; }
   #graph { position:relative; overflow:hidden; }
-  svg { width:100%; height:100%; display:block; }
+  svg { width:100%; height:100%; display:block; cursor:grab; }
+  svg.panning { cursor:grabbing; }
+  #graphControls { position:absolute; top:8px; left:8px; display:flex; gap:6px; z-index:2; }
+  #graphControls button { background:var(--panel); color:var(--fg); border:1px solid var(--line);
+                          border-radius:4px; padding:3px 8px; cursor:pointer; font-size:12px; }
+  #graphControls button:hover { background:#39435a; }
+  #graphHint { position:absolute; bottom:8px; left:8px; color:var(--dim); font-size:11px;
+               pointer-events:none; }
   aside { border-left:1px solid var(--line); overflow-y:auto; overflow-x:hidden; padding:12px;
           min-width:0; overflow-wrap:anywhere; }
   .panel { background:var(--panel); border:1px solid var(--line); border-radius:6px;
@@ -55,7 +62,15 @@
   <button id="compileBtn">Compile context</button>
   <button id="exportBtn">Export JSON</button>
 </header>
-<div id="graph"><svg id="svg"></svg></div>
+<div id="graph">
+  <div id="graphControls">
+    <button id="zoomIn" title="Zoom in">+</button>
+    <button id="zoomOut" title="Zoom out">&minus;</button>
+    <button id="resetView" title="Reset view">reset view</button>
+  </div>
+  <svg id="svg"></svg>
+  <div id="graphHint">drag to pan &middot; scroll to zoom</div>
+</div>
 <aside>
   <div class="panel" id="inbox" style="display:none"><h2>Review inbox</h2></div>
   <div class="panel" id="detail"><h2>Entity</h2><div class="dim">Click a node.</div></div>
@@ -120,10 +135,65 @@ async function loadGraph(){
   loadPanels();
 }
 
+const NS_SVG = "http://www.w3.org/2000/svg";
+let view = {tx: 0, ty: 0, scale: 1};
+let viewport = null;
+
+function applyView(){
+  if (viewport) viewport.setAttribute("transform",
+    `translate(${view.tx} ${view.ty}) scale(${view.scale})`);
+}
+function resetView(){ view = {tx: 0, ty: 0, scale: 1}; applyView(); }
+
+function setupPanZoom(){
+  const svg = document.getElementById("svg");
+  let panning = false, moved = false, sx = 0, sy = 0;
+  svg.addEventListener("mousedown", e => {
+    panning = true; moved = false; sx = e.clientX; sy = e.clientY;
+    svg.classList.add("panning");
+  });
+  window.addEventListener("mousemove", e => {
+    if (!panning) return;
+    const dx = e.clientX - sx, dy = e.clientY - sy;
+    if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+    view.tx += dx; view.ty += dy; sx = e.clientX; sy = e.clientY; applyView();
+  });
+  window.addEventListener("mouseup", () => { panning = false; svg.classList.remove("panning"); });
+  // Suppress the node click that would otherwise fire at the end of a drag.
+  svg.addEventListener("click", e => { if (moved) { e.stopPropagation(); moved = false; } }, true);
+  svg.addEventListener("wheel", e => {
+    e.preventDefault();
+    const rect = svg.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const factor = e.deltaY < 0 ? 1.15 : 1/1.15;
+    const ns = Math.max(0.2, Math.min(5, view.scale * factor));
+    const k = ns / view.scale;
+    // Keep the point under the cursor fixed while zooming.
+    view.tx = mx - (mx - view.tx) * k;
+    view.ty = my - (my - view.ty) * k;
+    view.scale = ns; applyView();
+  }, {passive: false});
+  document.getElementById("zoomIn").onclick = () => zoomBy(1.25);
+  document.getElementById("zoomOut").onclick = () => zoomBy(1/1.25);
+  document.getElementById("resetView").onclick = resetView;
+}
+function zoomBy(factor){
+  const svg = document.getElementById("svg");
+  const cx = svg.clientWidth/2, cy = svg.clientHeight/2;
+  const ns = Math.max(0.2, Math.min(5, view.scale * factor));
+  const k = ns / view.scale;
+  view.tx = cx - (cx - view.tx) * k; view.ty = cy - (cy - view.ty) * k;
+  view.scale = ns; applyView();
+}
+
 function drawGraph(){
   const svg = document.getElementById("svg");
   const W = svg.clientWidth || 800, H = svg.clientHeight || 600;
   svg.innerHTML = "";
+  viewport = document.createElementNS(NS_SVG, "g");
+  viewport.setAttribute("id", "viewport");
+  svg.appendChild(viewport);
+  applyView();
   const nodes = G.entities.map((e,i) => ({...e,
     x: W/2 + Math.cos(2*Math.PI*i/Math.max(G.entities.length,1)) * Math.min(W,H)/3.2,
     y: H/2 + Math.sin(2*Math.PI*i/Math.max(G.entities.length,1)) * Math.min(W,H)/3.2,
@@ -149,20 +219,20 @@ function drawGraph(){
       n.x = Math.max(30, Math.min(W-30, n.x)); n.y = Math.max(30, Math.min(H-30, n.y));
     }
   }
-  const NS = "http://www.w3.org/2000/svg";
+  const NS = NS_SVG;
   for (const e of edges){
     const a=byId[e.subject_entity_id], b=byId[e.object_entity_id];
     const line = document.createElementNS(NS,"line");
     line.setAttribute("class","edge");
     line.setAttribute("x1",a.x); line.setAttribute("y1",a.y);
     line.setAttribute("x2",b.x); line.setAttribute("y2",b.y);
-    svg.appendChild(line);
+    viewport.appendChild(line);
     const t = document.createElementNS(NS,"text");
     t.setAttribute("class","edge-label");
     t.setAttribute("x",(a.x+b.x)/2); t.setAttribute("y",(a.y+b.y)/2 - 4);
     t.setAttribute("text-anchor","middle");
     t.textContent = e.predicate + (e.status==="soft" ? " (soft)" : "");
-    svg.appendChild(t);
+    viewport.appendChild(t);
   }
   for (const n of nodes){
     const g = document.createElementNS(NS,"g");
@@ -181,7 +251,7 @@ function drawGraph(){
     t.setAttribute("x",n.x); t.setAttribute("y",n.y+26); t.setAttribute("text-anchor","middle");
     t.textContent = n.display_name;
     g.appendChild(t);
-    svg.appendChild(g);
+    viewport.appendChild(g);
   }
 }
 
@@ -379,6 +449,7 @@ document.getElementById("exportBtn").addEventListener("click", async () => {
   a.href = URL.createObjectURL(blob); a.download = "lore-export.json"; a.click();
 });
 
+setupPanZoom();
 initLores().then(loadGraph);
 </script>
 </body>
