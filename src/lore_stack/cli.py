@@ -340,6 +340,23 @@ def _cmd_lores(args) -> int:
             return 1
         print(f"copied lore {args.from_name!r} -> {args.to_name!r} (fresh history)")
         return 0
+    if args.action in ("freeze", "reset"):
+        from lore_stack import frozen
+
+        if not args.name:
+            print(f"{args.action} requires --name", file=sys.stderr)
+            return 1
+        try:
+            if args.action == "freeze":
+                frozen.freeze(home, args.name)
+                print(f"froze lore {args.name!r} (DB + snapshot history) as its baseline")
+            else:
+                frozen.reset(home, args.name)
+                print(f"reset lore {args.name!r} to its frozen baseline (full restore)")
+        except LoreError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        return 0
     # list
     if not home.exists():
         print("[]")
@@ -431,8 +448,8 @@ def main(argv=None) -> int:
     p.add_argument("--port", type=int, default=8377)
     p.set_defaults(func=_cmd_serve)
 
-    p = sub.add_parser("lores", help="list, create, or copy lores in a lore home directory")
-    p.add_argument("action", choices=["list", "create", "copy"])
+    p = sub.add_parser("lores", help="manage lores in a lore home (list/create/copy/freeze/reset)")
+    p.add_argument("action", choices=["list", "create", "copy", "freeze", "reset"])
     p.add_argument("--home", required=True)
     p.add_argument("--name", default=None)
     p.add_argument("--from", dest="from_name", default=None, help="source lore for copy")

@@ -34,13 +34,21 @@ foreach ($lore in @("harrow-hollow", "clockwork-coast", "winnie-the-pooh")) {
     }
 }
 
+# Freeze the seed lores: a pristine baseline (DB + history) the operator can play
+# with and hard-reset to. 'production' stays unfrozen (it's the working lore).
+foreach ($lore in @("test-boxwell", "harrow-hollow", "clockwork-coast", "winnie-the-pooh")) {
+    & $py -m lore_stack.cli lores freeze --home $LoreHome --name $lore | Out-Null
+}
+
 Write-Host ""
 Write-Host "Lore home ready: $LoreHome"
-Write-Host "  production       - empty, your real canon goes here"
+Write-Host "  production       - empty, your real canon goes here (not frozen)"
 Write-Host "  test-boxwell     - canon Boxwell (stories 1-4) + 2 proposals in the review inbox (~5 nodes)"
 Write-Host "  harrow-hollow    - a winter village world (~10 nodes)"
 Write-Host "  clockwork-coast  - a coastal clock-tower world (~20 nodes)"
 Write-Host "  winnie-the-pooh  - hand-authored from chapter 1 of A. A. Milne (~11 nodes)"
+Write-Host ""
+Write-Host "The four seed lores are FROZEN: play freely, then 'reset to frozen' to restore."
 Write-Host ""
 Write-Host "In the UI: switch lores (dropdown), review the inbox proposals (downselect"
 Write-Host "and apply, or discard), then check the History panel to roll anything back."

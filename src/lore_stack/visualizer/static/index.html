@@ -59,6 +59,7 @@
           border:1px solid var(--line); border-radius:4px; padding:6px 8px;"></select>
   <button id="newLoreBtn" style="display:none">+ lore</button>
   <button id="copyLoreBtn" style="display:none">copy lore</button>
+  <button id="resetLoreBtn" style="display:none" title="Discard all changes and history; restore the pristine frozen version">reset to frozen</button>
   <input id="query" placeholder='Query, e.g. "Tell another story with Boxwell"'>
   <button id="compileBtn">Compile context</button>
   <button id="exportBtn">Export JSON</button>
@@ -108,7 +109,24 @@ async function initLores(){
   const saved = localStorage.getItem("lore");
   LORE = names.includes(saved) ? saved : names[0] || null;
   if (LORE) sel.value = LORE;
-  sel.onchange = () => { LORE = sel.value; localStorage.setItem("lore", LORE); loadGraph(); };
+  const frozenByName = Object.fromEntries(lores.map(l => [l.name, l.has_frozen]));
+  const resetBtn = document.getElementById("resetLoreBtn");
+  const refreshResetBtn = () => {
+    resetBtn.style.display = (LORE && frozenByName[LORE]) ? "" : "none";
+  };
+  refreshResetBtn();
+  resetBtn.onclick = async () => {
+    if (!LORE || !frozenByName[LORE]) return;
+    if (!confirm(`Reset "${LORE}" to its pristine frozen version? This discards ALL changes and history since it was frozen.`)) return;
+    try {
+      await fetch(`/api/lores/${encodeURIComponent(LORE)}/reset`, {method:"POST"})
+        .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error); });
+      await initLores(); loadGraph();
+    } catch (e){ alert("Reset failed: " + e.message); }
+  };
+  sel.onchange = () => {
+    LORE = sel.value; localStorage.setItem("lore", LORE); refreshResetBtn(); loadGraph();
+  };
   async function makeLore(body, errLabel){
     try {
       await fetch("/api/lores", {method:"POST", headers:{"Content-Type":"application/json"},

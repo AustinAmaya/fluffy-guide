@@ -28,6 +28,7 @@ from lore_stack.writeback import (
     restore_entity,
 )
 
+from lore_stack import frozen  # noqa: E402
 from lore_stack.lores import LORE_NAME_RE, LoreError, copy_lore  # noqa: E402
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -171,7 +172,8 @@ def create_app(db_path: str | Path | None = None, *, home: str | Path | None = N
             return jsonify({"error": "server is running in single-database mode"}), 404
         out = []
         for path in sorted(home_dir.glob("*.db")):
-            entry = {"name": path.stem, "entities": 0, "stories": 0, "open_conflicts": 0}
+            entry = {"name": path.stem, "entities": 0, "stories": 0, "open_conflicts": 0,
+                     "has_frozen": frozen.has_frozen(home_dir, path.stem)}
             c = _open(path)
             try:
                 entry["entities"] = c.execute(
@@ -210,6 +212,16 @@ def create_app(db_path: str | Path | None = None, *, home: str | Path | None = N
         c = _open(path)
         init_db(c)
         c.close()
+        return jsonify({"ok": True, "name": name})
+
+    @app.post("/api/lores/<name>/reset")
+    def reset_lore_route(name):
+        if home_dir is None:
+            return jsonify({"error": "server is running in single-database mode"}), 404
+        try:
+            frozen.reset(home_dir, name)
+        except LoreError as exc:
+            return jsonify({"error": str(exc)}), 400
         return jsonify({"ok": True, "name": name})
 
     @app.get("/api/entities")
