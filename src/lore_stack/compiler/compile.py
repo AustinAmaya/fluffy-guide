@@ -16,13 +16,31 @@ from lore_stack.seams.embedder import Embedder
 from lore_stack.writeback.engine import token_estimate
 
 LANE_ORDER = ["character_card", "world_info", "relationships", "open_hooks", "recent_continuity"]
+# Lane headings are secondary ("##") beneath the one primary "=== CONTEXT FOR ==="
+# header, so the operator can see at a glance whose lore a compiled block is.
 LANE_HEADERS = {
-    "character_card": "[CHARACTER CARD]",
-    "world_info": "[WORLD INFO]",
-    "relationships": "[RELATIONSHIPS]",
-    "open_hooks": "[OPEN HOOKS]",
-    "recent_continuity": "[RECENT CONTINUITY]",
+    "character_card": "## Character card",
+    "world_info": "## World info",
+    "relationships": "## Relationships",
+    "open_hooks": "## Open hooks",
+    "recent_continuity": "## Recent continuity",
 }
+
+
+def _lane_header(lane: str, no_match: bool) -> str:
+    if lane == "recent_continuity" and no_match:
+        return "## Recent continuity (offered for optional connection)"
+    return LANE_HEADERS[lane]
+
+
+def _primary_header(conn, targets: list[str]) -> str:
+    if not targets:
+        return "=== CONTEXT FOR: (no entities from your request are in this lore) ==="
+    names = []
+    for t in targets:
+        row = conn.execute("SELECT display_name FROM entities WHERE entity_id=?", (t,)).fetchone()
+        names.append(row["display_name"] if row else t)
+    return f"=== CONTEXT FOR: {', '.join(names)} ==="
 DEFAULT_LANE_BUDGETS = {
     "character_card": 400,
     "world_info": 350,
@@ -140,6 +158,10 @@ def compile_context(
     for lane in LANE_ORDER:
         by_lane[lane].sort(key=lambda c: (-c.row["priority"], -c.score, c.chunk_id))
 
+    no_match = not targets
+    primary_header = _primary_header(conn, targets)
+    primary_cost = token_estimate(primary_header)
+
     selected: list[dict] = []
     dropped: list[dict] = []
     chosen: dict[str, list[Candidate]] = {lane: [] for lane in LANE_ORDER}
@@ -147,17 +169,19 @@ def compile_context(
     any_content = False
     for lane in LANE_ORDER:
         lane_tokens = 0
-        header_cost = token_estimate(LANE_HEADERS[lane])
+        header_cost = token_estimate(_lane_header(lane, no_match))
         for cand in by_lane[lane]:
             cost = cand.row["token_estimate"]
             # Joiner accounting: opening a lane pays its header + newline (and a
             # lane separator / the final trailing newline); each further chunk in
-            # a lane pays its joining newline. Per-piece ceil(len/4) sums to at
-            # least the estimate of the assembled text, so the bound is real.
+            # a lane pays its joining newline. The very first piece overall also
+            # pays for the primary "CONTEXT FOR" header + its blank line. Per-piece
+            # ceil(len/4) sums to at least the estimate of the assembled text, so
+            # the bound is real.
             if not chosen[lane]:
                 extra = header_cost + 1 + 1  # header, its newline, separator/trailer
                 if not any_content:
-                    extra += 1  # final trailing newline, charged once
+                    extra += 1 + primary_cost + 1  # trailer + primary header + blank line
             else:
                 extra = 1  # "\n" between bodies
             if lane_tokens + cost > lane_budgets.get(lane, 0):
@@ -172,13 +196,16 @@ def compile_context(
             any_content = True
             selected.append(_trace(cand, lane, "included"))
 
-    parts = []
-    for lane in LANE_ORDER:
-        if not chosen[lane]:
-            continue
-        bodies = "\n".join(c.row["body"].strip() for c in chosen[lane])
-        parts.append(f"{LANE_HEADERS[lane]}\n{bodies}")
-    text = _normalize_text("\n\n".join(parts))
+    if any_content:
+        parts = [primary_header]
+        for lane in LANE_ORDER:
+            if not chosen[lane]:
+                continue
+            bodies = "\n".join(c.row["body"].strip() for c in chosen[lane])
+            parts.append(f"{_lane_header(lane, no_match)}\n{bodies}")
+        text = _normalize_text("\n\n".join(parts))
+    else:
+        text = ""  # nothing relevant -> empty context (e.g. a brand-new empty lore)
 
     n = conn.execute("SELECT COUNT(*) FROM compiler_runs").fetchone()[0]
     compile_id = f"cmp_{n + 1:06d}"

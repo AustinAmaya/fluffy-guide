@@ -189,6 +189,14 @@ def gather_candidates(
             relevant = direct_hit or is_target
         else:
             relevant = direct_hit or graph_hit or pinned_to_target
+        # Lore-continuity fallback: when the query names no known entity but the
+        # lore is non-empty, offer its recent continuity unconditionally as
+        # connective tissue for a new story (the lore is the unit of connection).
+        # An empty lore has no such chunks, so it still returns nothing.
+        if not targets and row["insertion_lane"] == "recent_continuity":
+            relevant = True
+            if "lore_continuity" not in cand.reasons:
+                cand.reasons.append("lore_continuity")
         if relevant:
             candidates[row["chunk_id"]] = cand
 

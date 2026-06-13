@@ -11,8 +11,10 @@ def test_compile_boxwell_query(db_seeded):
 
     assert "ent_boxwell" in result.targets
     assert "Boxwell is a quiet travelling clockmaker" in result.text
-    assert "[CHARACTER CARD]" in result.text
-    assert "[OPEN HOOKS]" in result.text
+    # Primary header names the targeted entity; lanes are secondary "##" headings.
+    assert "=== CONTEXT FOR: Boxwell ===" in result.text
+    assert "## Character card" in result.text
+    assert "## Open hooks" in result.text
     assert "escapement spring" in result.text
     assert result.total_tokens <= result.budget_tokens
 
@@ -30,11 +32,15 @@ def test_multi_entity_query_represents_every_target(db_seeded):
     )
     assert {"ent_boxwell", "ent_mirel", "ent_whitmoor"} <= set(result.targets)
 
-    # Mirel (character, no authored card) gets a fact-synthesized CHARACTER CARD entry.
-    card_section = result.text.split("[WORLD INFO]")[0]
+    # The primary header names every targeted entity.
+    assert result.text.startswith("=== CONTEXT FOR: ")
+    header_line = result.text.splitlines()[0]
+    assert "Boxwell" in header_line and "Mirel" in header_line and "Whitmoor" in header_line
+    # Mirel (character, no authored card) gets a fact-synthesized character-card entry.
+    card_section = result.text.split("## World info")[0]
     assert "Mirel" in card_section
     assert "trusts Boxwell [unconfirmed]" in result.text
-    # Whitmoor (location, no authored chunk at all) appears in WORLD INFO.
+    # Whitmoor (location, no authored chunk at all) appears under World info.
     assert "Whitmoor" in result.text
     synth = [s for s in result.selected if "synthesized_from_facts" in s["reasons"]]
     assert {s["chunk_id"] for s in synth} == {"factcard_ent_mirel", "factcard_ent_whitmoor"}
@@ -45,6 +51,33 @@ def test_multi_entity_query_represents_every_target(db_seeded):
         db, "tell me a story about boxwell and mirel at whitmoor", embedder=FakeEmbedder()
     )
     assert again.text.encode("utf-8") == result.text.encode("utf-8")
+
+
+def test_no_entity_match_is_legible_in_a_populated_lore(db_seeded):
+    """A query naming no known entity, in an existing lore, returns recent
+    continuity clearly labeled as optional connective tissue (the lore is the
+    unit of connection: a new character can be woven into existing threads)."""
+    result = compile_context(
+        db_seeded, "a tale of arthur the hedgehog on the space station",
+        embedder=FakeEmbedder(),
+    )
+    assert result.targets == []
+    assert result.text.startswith(
+        "=== CONTEXT FOR: (no entities from your request are in this lore) ==="
+    )
+    assert "## Recent continuity (offered for optional connection)" in result.text
+    assert result.total_tokens <= result.budget_tokens
+
+
+def test_no_entity_match_in_an_empty_lore_returns_nothing(db):
+    """Same query in a brand-new empty lore returns nothing -- a new lore is a
+    clean slate with no continuity to connect to."""
+    result = compile_context(
+        db, "a tale of arthur the hedgehog on the space station", embedder=FakeEmbedder()
+    )
+    assert result.targets == []
+    assert result.text == ""
+    assert result.total_tokens == 0
 
 
 def test_query_does_not_pull_unrequested_identity_cards(db_seeded):

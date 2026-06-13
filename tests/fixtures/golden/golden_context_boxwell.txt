@@ -1,16 +1,18 @@
-[CHARACTER CARD]
+=== CONTEXT FOR: Boxwell ===
+
+## Character card
 Boxwell is a quiet travelling clockmaker known for patient repairs and a cedar case of tools.
 
-[WORLD INFO]
+## World info
 The Brambled Inn is a weathered roadside inn whose hallway clock has been stopped for twenty years.
 
-[RELATIONSHIPS]
+## Relationships
 The innkeeper Mirel trusts Boxwell's discretion after he repaired the kitchen regulator without asking payment.
 
-[OPEN HOOKS]
+## Open hooks
 The stopped hallway clock at the Brambled Inn may hide a message in its missing escapement spring.
 
-[RECENT CONTINUITY]
+## Recent continuity
 Previous story summary: Boxwell repaired the Brambled Inn's kitchen regulator for free, and Mirel now keeps the corner room ready for him.
 Previous story summary: Boxwell repaired the church regulator at Harrow Fen and revealed the cedar tool case belonged to his teacher.
 Previous story summary: the clockmaker repaired a silent music box in Whitmoor and left without giving his name.
