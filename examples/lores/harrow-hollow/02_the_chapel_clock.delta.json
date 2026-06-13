@@ -1,0 +1,23 @@
+{
+  "story_id": "hh_02_the_chapel_clock",
+  "story_title": "The Chapel Clock",
+  "story_summary": "The hollow chapel's clock stops on the longest night; Boxwell and Tobias find a moonstone pendant wedged in the movement, and the terrier Pip leads them to the stone mill.",
+  "entities": [
+    {"slug": "boxwell", "display_name": "Boxwell", "kind": "character", "aliases": [], "summary": "A patient travelling clockmaker who carries a cedar case of tools.", "confidence": 0.99, "evidence_excerpt": "Boxwell climbed the chapel ladder with a lamp."},
+    {"slug": "the-stone-mill", "display_name": "The Stone Mill", "kind": "location", "aliases": ["the mill"], "summary": "Tobias's family mill on the edge of the hollow, its wheel frozen for the winter.", "confidence": 0.9, "evidence_excerpt": "The stone mill stood silent above the iced race."},
+    {"slug": "moonstone-pendant", "display_name": "Moonstone Pendant", "kind": "item", "aliases": ["the pendant"], "summary": "A pale moonstone pendant found jammed in the chapel clock's movement.", "confidence": 0.93, "evidence_excerpt": "A moonstone pendant had stopped the escapement dead."},
+    {"slug": "the-hollow-chapel", "display_name": "The Hollow Chapel", "kind": "location", "aliases": ["the chapel"], "summary": "The little chapel whose ancient clock governs the hollow's days.", "confidence": 0.92, "evidence_excerpt": "The hollow chapel's clock had not missed an hour in a century."},
+    {"slug": "pip", "display_name": "Pip", "kind": "character", "aliases": ["the terrier"], "summary": "Tobias's quick brown terrier, with a nose for hidden things.", "confidence": 0.85, "evidence_excerpt": "Pip scratched at the mill door until they followed."}
+  ],
+  "claims": [
+    {"subject_slug": "the-hollow-chapel", "predicate": "located_in", "object_slug": "harrow-hollow", "confidence": 0.9, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "The chapel stands at the heart of the hollow."},
+    {"subject_slug": "pip", "predicate": "belongs_to", "object_slug": "tobias", "confidence": 0.88, "importance": "low", "canonicality_hint": "candidate", "evidence_excerpt": "Pip was Tobias's shadow."},
+    {"subject_slug": "boxwell", "predicate": "carries", "object_literal": "cedar tool case", "confidence": 0.92, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "the cedar case never left his side"},
+    {"subject_slug": "tobias", "predicate": "keeps", "object_slug": "the-stone-mill", "confidence": 0.8, "importance": "low", "canonicality_hint": "candidate", "evidence_excerpt": "Tobias's family had kept the stone mill for generations."}
+  ],
+  "chunks": [
+    {"title": "The chapel clock mystery", "body": "The hollow chapel's clock stopped on the longest night because a moonstone pendant was wedged in its movement — no one will say whose it was.", "activation_keys": ["chapel", "clock", "moonstone pendant"], "retrieval_mode": "hybrid", "insertion_lane": "open_hooks", "priority": 850, "entity_slug": "the-hollow-chapel"},
+    {"title": "Continuity: The Chapel Clock", "body": "Previous story summary: Boxwell and Tobias freed the chapel clock of a moonstone pendant, and Pip the terrier led them to the frozen stone mill.", "activation_keys": ["boxwell", "chapel", "moonstone pendant"], "retrieval_mode": "hybrid", "insertion_lane": "recent_continuity", "priority": 520, "entity_slug": "boxwell"}
+  ],
+  "open_questions": ["Whose moonstone pendant stopped the chapel clock, and how did it get there?"]
+}

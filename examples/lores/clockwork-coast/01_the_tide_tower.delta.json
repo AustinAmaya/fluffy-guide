@@ -1,0 +1,29 @@
+{
+  "story_id": "cc_01_the_tide_tower",
+  "story_title": "The Tide Tower",
+  "story_summary": "Boxwell is summoned to Clockwork Coast to mend the great Tideclock in the Tide Tower; Captain Saltleigh vouches for him, Lucia the lamplighter guides him, and the rival clocksmith Fenwick resents the outsider.",
+  "entities": [
+    {"slug": "boxwell", "display_name": "Boxwell", "kind": "character", "aliases": ["the clockmaker"], "summary": "A patient travelling clockmaker who carries a cedar case of tools.", "confidence": 0.99, "evidence_excerpt": "Boxwell stepped off the mail-coach with the cedar case."},
+    {"slug": "mirel", "display_name": "Mirel", "kind": "character", "aliases": ["the innkeeper"], "summary": "The innkeeper of the Brambled Inn, whose recommendation brought Boxwell to the coast.", "confidence": 0.92, "evidence_excerpt": "It was Mirel who had named Boxwell to the harbor council."},
+    {"slug": "clockwork-coast", "display_name": "Clockwork Coast", "kind": "location", "aliases": ["the coast"], "summary": "A salt-bitten town whose life runs on a great tide-driven clock.", "confidence": 0.97, "evidence_excerpt": "Clockwork Coast kept its hours by the sea."},
+    {"slug": "captain-saltleigh", "display_name": "Captain Saltleigh", "kind": "character", "aliases": ["the captain"], "summary": "A retired sea-captain who heads the harbor council and trusts Boxwell on Mirel's word.", "confidence": 0.93, "evidence_excerpt": "Captain Saltleigh shook his hand at the quay."},
+    {"slug": "lucia-the-lamplighter", "display_name": "Lucia", "kind": "character", "aliases": ["the lamplighter"], "summary": "The coast's lamplighter, who knows every stair of the Tide Tower.", "confidence": 0.9, "evidence_excerpt": "Lucia carried her long brass lighter up the tower stair."},
+    {"slug": "fenwick", "display_name": "Fenwick", "kind": "character", "aliases": ["the rival"], "summary": "A proud local clocksmith who resents an outsider being called to the Tideclock.", "confidence": 0.9, "evidence_excerpt": "Fenwick watched from his shop door, arms folded."},
+    {"slug": "the-tide-tower", "display_name": "The Tide Tower", "kind": "location", "aliases": ["the tower"], "summary": "The tall stone tower that houses the Tideclock above the harbor.", "confidence": 0.94, "evidence_excerpt": "The Tide Tower leaned over the water like a watchman."},
+    {"slug": "the-tideclock", "display_name": "The Tideclock", "kind": "item", "aliases": ["the great clock"], "summary": "The vast tide-driven clock whose stopping would unmoor the whole town's day.", "confidence": 0.95, "evidence_excerpt": "The Tideclock had lost a full hour against the sea."}
+  ],
+  "claims": [
+    {"subject_slug": "boxwell", "predicate": "visits", "object_slug": "clockwork-coast", "confidence": 0.95, "importance": "high", "canonicality_hint": "candidate", "evidence_excerpt": "Boxwell came to the coast at the council's summons."},
+    {"subject_slug": "the-tideclock", "predicate": "housed_in", "object_slug": "the-tide-tower", "confidence": 0.94, "importance": "high", "canonicality_hint": "candidate", "evidence_excerpt": "The Tideclock filled the tower's upper room."},
+    {"subject_slug": "captain-saltleigh", "predicate": "trusts", "object_slug": "boxwell", "confidence": 0.9, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "The captain vouched for the clockmaker."},
+    {"subject_slug": "fenwick", "predicate": "resents", "object_slug": "boxwell", "confidence": 0.88, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "Fenwick thought the work should have been his."},
+    {"subject_slug": "lucia-the-lamplighter", "predicate": "resides_in", "object_slug": "clockwork-coast", "confidence": 0.85, "importance": "low", "canonicality_hint": "candidate", "evidence_excerpt": "Lucia had lit the coast's lamps all her life."}
+  ],
+  "chunks": [
+    {"title": "Boxwell on the coast", "body": "Boxwell has been called to Clockwork Coast to mend the great Tideclock, on the recommendation of the innkeeper Mirel.", "activation_keys": ["boxwell", "clockwork coast", "tideclock"], "retrieval_mode": "hybrid", "insertion_lane": "character_card", "priority": 1000, "entity_slug": "boxwell"},
+    {"title": "The Tideclock", "body": "The Tideclock in the Tide Tower drives the whole town's day from the rise and fall of the sea; it has begun to lose time.", "activation_keys": ["tideclock", "tide tower", "coast"], "retrieval_mode": "hybrid", "insertion_lane": "world_info", "priority": 820, "entity_slug": "the-tideclock"},
+    {"title": "The rival Fenwick", "body": "Fenwick, the coast's own clocksmith, resents Boxwell being called to the Tideclock over him.", "activation_keys": ["fenwick", "rival"], "retrieval_mode": "hybrid", "insertion_lane": "relationships", "priority": 690, "entity_slug": "fenwick"},
+    {"title": "Continuity: The Tide Tower", "body": "Previous story summary: Boxwell reached Clockwork Coast to mend the failing Tideclock, welcomed by Captain Saltleigh and resented by the rival Fenwick.", "activation_keys": ["boxwell", "tideclock", "coast"], "retrieval_mode": "hybrid", "insertion_lane": "recent_continuity", "priority": 530, "entity_slug": "boxwell"}
+  ],
+  "open_questions": ["Why is the Tideclock losing time, and is it the sea or a hand that slows it?"]
+}

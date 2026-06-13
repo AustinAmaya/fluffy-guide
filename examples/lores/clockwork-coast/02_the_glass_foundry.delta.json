@@ -1,0 +1,28 @@
+{
+  "story_id": "cc_02_the_glass_foundry",
+  "story_title": "The Glass Foundry",
+  "story_summary": "Boxwell needs a new lens for the Tideclock; the glassblower Marina and her brother Dorian cast it at the foundry, while the brass astrolabe and the singing bell go missing from the lighthouse.",
+  "entities": [
+    {"slug": "boxwell", "display_name": "Boxwell", "kind": "character", "aliases": [], "summary": "A patient travelling clockmaker who carries a cedar case of tools.", "confidence": 0.99, "evidence_excerpt": "Boxwell sketched the lens he needed in soot on the foundry wall."},
+    {"slug": "marina", "display_name": "Marina", "kind": "character", "aliases": ["the glassblower"], "summary": "A glassblower who can cast a lens true enough for the Tideclock.", "confidence": 0.92, "evidence_excerpt": "Marina turned the gather slowly in the furnace mouth."},
+    {"slug": "dorian", "display_name": "Dorian", "kind": "character", "aliases": [], "summary": "Marina's brother, who keeps the foundry books and the lighthouse watch.", "confidence": 0.9, "evidence_excerpt": "Dorian climbed to the lighthouse every dusk."},
+    {"slug": "saltleigh-docks", "display_name": "Saltleigh Docks", "kind": "location", "aliases": ["the docks"], "summary": "The working docks where the coast's trade comes and goes.", "confidence": 0.9, "evidence_excerpt": "The Saltleigh Docks smelled of tar and cold iron."},
+    {"slug": "the-glass-foundry", "display_name": "The Glass Foundry", "kind": "location", "aliases": ["the foundry"], "summary": "Marina's foundry, where the coast's glass and lenses are cast.", "confidence": 0.91, "evidence_excerpt": "The glass foundry glowed all night above the docks."},
+    {"slug": "gull-rock-lighthouse", "display_name": "Gull Rock Lighthouse", "kind": "location", "aliases": ["the lighthouse"], "summary": "The lighthouse on Gull Rock, watched by Dorian, where the singing bell hangs.", "confidence": 0.9, "evidence_excerpt": "Gull Rock Lighthouse threw its beam across the bar."},
+    {"slug": "brass-astrolabe", "display_name": "Brass Astrolabe", "kind": "item", "aliases": ["the astrolabe"], "summary": "A brass astrolabe used to set the Tideclock against the stars; it has gone missing.", "confidence": 0.9, "evidence_excerpt": "The brass astrolabe was gone from its hook."},
+    {"slug": "the-singing-bell", "display_name": "The Singing Bell", "kind": "item", "aliases": ["the bell"], "summary": "A bell at the lighthouse that hums before a storm; it too has vanished.", "confidence": 0.88, "evidence_excerpt": "The singing bell did not answer the wind that night."}
+  ],
+  "claims": [
+    {"subject_slug": "marina", "predicate": "keeps", "object_slug": "the-glass-foundry", "confidence": 0.9, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "Marina ran the foundry alone."},
+    {"subject_slug": "dorian", "predicate": "sibling_of", "object_slug": "marina", "confidence": 0.9, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "Dorian was Marina's younger brother."},
+    {"subject_slug": "dorian", "predicate": "tends", "object_slug": "gull-rock-lighthouse", "confidence": 0.88, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "Dorian kept the lighthouse watch."},
+    {"subject_slug": "the-singing-bell", "predicate": "hangs_in", "object_slug": "gull-rock-lighthouse", "confidence": 0.86, "importance": "low", "canonicality_hint": "candidate", "evidence_excerpt": "the bell had always hung in the lantern room"},
+    {"subject_slug": "boxwell", "predicate": "visits", "object_slug": "the-glass-foundry", "confidence": 0.85, "importance": "low", "canonicality_hint": "candidate", "evidence_excerpt": "Boxwell came to the foundry for his lens."}
+  ],
+  "chunks": [
+    {"title": "The missing instruments", "body": "The brass astrolabe that sets the Tideclock and the singing bell from Gull Rock Lighthouse have both gone missing in the same week.", "activation_keys": ["brass astrolabe", "singing bell", "lighthouse"], "retrieval_mode": "hybrid", "insertion_lane": "open_hooks", "priority": 860, "entity_slug": "brass-astrolabe"},
+    {"title": "Marina's foundry", "body": "Marina casts the coast's glass and the new lens for the Tideclock, while her brother Dorian keeps the lighthouse on Gull Rock.", "activation_keys": ["marina", "foundry", "lens"], "retrieval_mode": "hybrid", "insertion_lane": "world_info", "priority": 700, "entity_slug": "the-glass-foundry"},
+    {"title": "Continuity: The Glass Foundry", "body": "Previous story summary: Marina cast a new lens for the Tideclock while the brass astrolabe and the singing bell vanished from the lighthouse.", "activation_keys": ["boxwell", "foundry", "astrolabe"], "retrieval_mode": "hybrid", "insertion_lane": "recent_continuity", "priority": 540, "entity_slug": "boxwell"}
+  ],
+  "open_questions": ["Who is taking the coast's instruments, and do they mean to stop the Tideclock for good?"]
+}

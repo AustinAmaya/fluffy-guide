@@ -1,0 +1,26 @@
+{
+  "story_id": "cc_03_the_equinox_chime",
+  "story_title": "The Equinox Chime",
+  "story_summary": "On the night of the Equinox Chime, the harbormaster Salia and Boxwell's old apprentice Tobias trace the cobalt lens and the missing instruments to the Lantern Walk, and set the Tideclock right.",
+  "entities": [
+    {"slug": "boxwell", "display_name": "Boxwell", "kind": "character", "aliases": [], "summary": "A patient travelling clockmaker who carries a cedar case of tools.", "confidence": 0.99, "evidence_excerpt": "Boxwell waited for the equinox with his hand on the regulator."},
+    {"slug": "cobalt-lens", "display_name": "Cobalt Lens", "kind": "item", "aliases": ["the lens"], "summary": "The deep-blue lens Marina cast for the Tideclock, which bends the equinox light onto the dial.", "confidence": 0.92, "evidence_excerpt": "The cobalt lens caught the low equinox sun."},
+    {"slug": "the-equinox-chime", "display_name": "The Equinox Chime", "kind": "event", "aliases": ["the chime"], "summary": "The twice-yearly chiming when the Tideclock and the sun agree; the town's great festival.", "confidence": 0.9, "evidence_excerpt": "The whole coast gathered for the Equinox Chime."},
+    {"slug": "the-lantern-walk", "display_name": "The Lantern Walk", "kind": "location", "aliases": ["the walk"], "summary": "A lantern-hung seafront promenade where the coast strolls on festival nights.", "confidence": 0.88, "evidence_excerpt": "The Lantern Walk blazed end to end."},
+    {"slug": "salia", "display_name": "Salia", "kind": "character", "aliases": ["the harbormaster"], "summary": "The coast's sharp-eyed harbormaster, who keeps the tide-tables.", "confidence": 0.9, "evidence_excerpt": "Salia read the tide-tables like a book of hours."},
+    {"slug": "tobias", "display_name": "Tobias", "kind": "character", "aliases": ["the apprentice"], "summary": "Boxwell's apprentice from Harrow Hollow, grown and now sailed to the coast to help.", "confidence": 0.9, "evidence_excerpt": "Tobias had followed his master to the sea."}
+  ],
+  "claims": [
+    {"subject_slug": "salia", "predicate": "keeps", "object_slug": "saltleigh-docks", "confidence": 0.88, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "Salia was harbormaster of the Saltleigh Docks."},
+    {"subject_slug": "tobias", "predicate": "apprentices_to", "object_slug": "boxwell", "confidence": 0.9, "importance": "high", "canonicality_hint": "candidate", "evidence_excerpt": "Tobias was still Boxwell's apprentice."},
+    {"subject_slug": "cobalt-lens", "predicate": "fitted_to", "object_slug": "the-tideclock", "confidence": 0.85, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "Boxwell fitted the cobalt lens to the Tideclock."},
+    {"subject_slug": "the-equinox-chime", "predicate": "held_at", "object_slug": "the-lantern-walk", "confidence": 0.82, "importance": "low", "canonicality_hint": "candidate", "evidence_excerpt": "The chime was rung from the Lantern Walk."},
+    {"subject_slug": "salia", "predicate": "trusts", "object_slug": "boxwell", "confidence": 0.8, "importance": "low", "canonicality_hint": "candidate", "evidence_excerpt": "Salia came to rely on the clockmaker's eye."}
+  ],
+  "chunks": [
+    {"title": "The Equinox Chime", "body": "Twice a year the Tideclock and the sun agree and the whole of Clockwork Coast gathers on the Lantern Walk for the Equinox Chime.", "activation_keys": ["equinox chime", "lantern walk", "festival"], "retrieval_mode": "hybrid", "insertion_lane": "world_info", "priority": 760, "entity_slug": "the-equinox-chime"},
+    {"title": "Tobias returns", "body": "Boxwell's apprentice Tobias, grown since Harrow Hollow, has sailed to the coast and works at his master's side again.", "activation_keys": ["tobias", "apprentice", "coast"], "retrieval_mode": "hybrid", "insertion_lane": "relationships", "priority": 680, "entity_slug": "tobias"},
+    {"title": "Continuity: The Equinox Chime", "body": "Previous story summary: with Salia and Tobias, Boxwell fitted the cobalt lens and set the Tideclock right in time for the Equinox Chime.", "activation_keys": ["boxwell", "equinox", "tideclock"], "retrieval_mode": "hybrid", "insertion_lane": "recent_continuity", "priority": 550, "entity_slug": "boxwell"}
+  ],
+  "open_questions": ["Now that the Tideclock is true again, will Fenwick make peace?"]
+}

@@ -1,0 +1,26 @@
+{
+  "story_id": "hh_01_the_apprentice",
+  "story_title": "The Apprentice of Harrow Hollow",
+  "story_summary": "Boxwell winters in Harrow Hollow, where the miller's boy Tobias begs to learn the clockmaker's trade, and Mirel sends word from the Brambled Inn.",
+  "entities": [
+    {"slug": "boxwell", "display_name": "Boxwell", "kind": "character", "aliases": ["the clockmaker"], "summary": "A patient travelling clockmaker who carries a cedar case of tools.", "confidence": 0.99, "evidence_excerpt": "Boxwell unlatched the cedar case by the hearth."},
+    {"slug": "mirel", "display_name": "Mirel", "kind": "character", "aliases": ["the innkeeper"], "summary": "The discreet innkeeper of the Brambled Inn, who keeps a room for Boxwell.", "confidence": 0.95, "evidence_excerpt": "A letter came from Mirel, sealed with candle-wax."},
+    {"slug": "harrow-hollow", "display_name": "Harrow Hollow", "kind": "location", "aliases": ["the hollow"], "summary": "A snowbound village in a wooded hollow, fond of its old chapel clock.", "confidence": 0.96, "evidence_excerpt": "Harrow Hollow lay deep under the first snow."},
+    {"slug": "tobias", "display_name": "Tobias", "kind": "character", "aliases": ["the miller's boy"], "summary": "An eager boy who wants to learn clockmaking from Boxwell.", "confidence": 0.94, "evidence_excerpt": "Tobias pressed his nose to the workshop glass every morning."},
+    {"slug": "old-gregor", "display_name": "Old Gregor", "kind": "character", "aliases": ["Gregor"], "summary": "A retired clocksmith and Boxwell's own teacher, now living quietly in the hollow.", "confidence": 0.9, "evidence_excerpt": "It was Old Gregor who first taught Boxwell to listen to a movement."},
+    {"slug": "wren", "display_name": "Wren", "kind": "character", "aliases": ["the herbalist"], "summary": "The hollow's herbalist, who trades remedies for repairs.", "confidence": 0.88, "evidence_excerpt": "Wren left a jar of salve on the workbench."}
+  ],
+  "claims": [
+    {"subject_slug": "boxwell", "predicate": "visits", "object_slug": "harrow-hollow", "confidence": 0.95, "importance": "high", "canonicality_hint": "candidate", "evidence_excerpt": "Boxwell wintered in the hollow."},
+    {"subject_slug": "tobias", "predicate": "apprentices_to", "object_slug": "boxwell", "confidence": 0.9, "importance": "high", "canonicality_hint": "candidate", "evidence_excerpt": "Tobias begged to be taken on as an apprentice."},
+    {"subject_slug": "boxwell", "predicate": "taught_by", "object_slug": "old-gregor", "confidence": 0.88, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "Old Gregor had been his master once."},
+    {"subject_slug": "wren", "predicate": "resides_in", "object_slug": "harrow-hollow", "confidence": 0.85, "importance": "low", "canonicality_hint": "candidate", "evidence_excerpt": "Wren had never left the hollow."},
+    {"subject_slug": "mirel", "predicate": "trusts", "object_slug": "boxwell", "confidence": 0.9, "importance": "medium", "canonicality_hint": "candidate", "evidence_excerpt": "Mirel's letter spoke to him as an old friend."}
+  ],
+  "chunks": [
+    {"title": "Boxwell in winter", "body": "Boxwell is wintering in Harrow Hollow, mending the village's clocks from a borrowed workshop by the mill.", "activation_keys": ["boxwell", "harrow hollow", "winter"], "retrieval_mode": "hybrid", "insertion_lane": "character_card", "priority": 1000, "entity_slug": "boxwell"},
+    {"title": "Tobias the apprentice", "body": "Tobias, the miller's boy, has talked his way into Boxwell's workshop and is learning to clean and oil movements.", "activation_keys": ["tobias", "apprentice"], "retrieval_mode": "hybrid", "insertion_lane": "relationships", "priority": 700, "entity_slug": "tobias"},
+    {"title": "Continuity: The Apprentice", "body": "Previous story summary: Boxwell took the miller's boy Tobias as a winter apprentice in Harrow Hollow, while a letter arrived from Mirel.", "activation_keys": ["boxwell", "tobias", "harrow hollow"], "retrieval_mode": "hybrid", "insertion_lane": "recent_continuity", "priority": 510, "entity_slug": "boxwell"}
+  ],
+  "open_questions": ["Will Tobias have the patience the trade demands?"]
+}
