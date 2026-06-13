@@ -207,7 +207,7 @@ def _apply_inner(conn, delta, checksum, story_text, source_kind, source_uri,
 
     # --- claims -> facts ---
     for idx, claim in enumerate(delta.claims):
-        _apply_claim(conn, delta.story_id, idx, claim, report, now, reviewed)
+        _apply_claim(conn, delta.story_id, idx, claim, report, now, reviewed, embedder)
 
     # --- chunks ---
     for idx, chunk in enumerate(delta.chunks):
@@ -235,7 +235,8 @@ def _apply_inner(conn, delta, checksum, story_text, source_kind, source_uri,
 
 
 def _apply_claim(conn, story_id: str, idx: int, claim: ClaimInput,
-                 report: WritebackReport, now: str, reviewed: bool = False) -> None:
+                 report: WritebackReport, now: str, reviewed: bool = False,
+                 embedder: Optional[Embedder] = None) -> None:
     from lore_stack import registry  # lazy import: breaks the engine<->registry cycle
 
     claim_id = f"clm_{_short_hash(story_id, str(idx))}"
@@ -364,8 +365,10 @@ def _apply_claim(conn, story_id: str, idx: int, claim: ClaimInput,
     # fact; the legacy path requires the confidence floor.
     write_claim("candidate", subject_id)
     if reviewed or claim.confidence >= SOFT_FACT_CONFIDENCE:
-        _insert_fact(conn, subject_id, claim, object_entity_id, "soft",
-                     story_id, claim_id, now, report, predicate)
+        new_fact_id = _insert_fact(conn, subject_id, claim, object_entity_id, "soft",
+                                   story_id, claim_id, now, report, predicate)
+        _suggest_merges(conn, subject_id, predicate, new_fact_id, object_entity_id,
+                        claim.object_literal, embedder, now, report)
 
 
 def _find_fact(conn, subject_id, predicate, obj_norm, statuses):
@@ -394,6 +397,71 @@ def _insert_fact(conn, subject_id, claim: ClaimInput, object_entity_id, status,
     )
     report.facts_created.append(fact_id)
     return fact_id
+
+
+MERGE_THRESHOLD = 0.5  # aggressive, per the bedtime-lore "keep it small" mandate
+
+
+def _fact_object_text(conn, object_entity_id: Optional[str], object_literal: Optional[str]) -> str:
+    if object_entity_id is not None:
+        row = conn.execute(
+            "SELECT display_name FROM entities WHERE entity_id=?", (object_entity_id,)
+        ).fetchone()
+        return row["display_name"] if row else object_entity_id
+    return object_literal or ""
+
+
+def _suggest_merges(conn, subject_id, predicate, new_fact_id, object_entity_id,
+                    object_literal, embedder, now, report) -> None:
+    """Open a merge_suggestion when the just-created soft fact's object is
+    embedding-similar to an existing active value on the same (subject, predicate).
+    Deterministic (cosine over content-derived vectors); never auto-merges."""
+    if embedder is None:
+        return
+    siblings = conn.execute(
+        "SELECT * FROM facts WHERE subject_entity_id=? AND predicate=?"
+        " AND status IN ('canonical','soft') AND fact_id != ? ORDER BY fact_id",
+        (subject_id, predicate, new_fact_id),
+    ).fetchall()
+    if not siblings:
+        return
+    new_text = _fact_object_text(conn, object_entity_id, object_literal)
+    new_vec = embedder.embed([new_text])[0]
+    best = None
+    for sib in siblings:
+        # An existing suggestion for this pair? Don't duplicate it.
+        sib_text = _fact_object_text(conn, sib["object_entity_id"], sib["object_literal"])
+        sib_vec = embedder.embed([sib_text])[0]
+        cosine = sum(a * b for a, b in zip(new_vec, sib_vec))
+        if cosine >= MERGE_THRESHOLD and (best is None or cosine > best[0]):
+            best = (cosine, sib, sib_text)
+    if best is None:
+        return
+    cosine, sib, sib_text = best
+    item_id = f"mrg_{_short_hash(new_fact_id, sib['fact_id'])}"
+    if conn.execute(
+        "SELECT 1 FROM adjudication_queue WHERE item_id=?", (item_id,)
+    ).fetchone():
+        return
+    payload = {
+        "kind": "merge_suggestion",
+        "fact_a": new_fact_id,
+        "fact_a_text": new_text,
+        "fact_b": sib["fact_id"],
+        "fact_b_text": sib_text,
+        "subject_entity_id": subject_id,
+        "predicate": predicate,
+        "cosine": round(cosine, 6),
+    }
+    conn.execute(
+        "INSERT INTO adjudication_queue (item_id, item_kind, reason, payload_json,"
+        " status, created_at) VALUES (?, 'merge_suggestion', ?, ?, 'open', ?)",
+        (item_id,
+         f"possible duplicate values of {predicate!r}: {new_text!r} ~ {sib_text!r}"
+         f" (cosine {cosine:.2f})",
+         json.dumps(payload), now),
+    )
+    report.merge_suggestions_opened.append(item_id)
 
 
 # --- human-authoritative paths (the only sanctioned invariant carve-outs) ---
@@ -463,6 +531,37 @@ def manual_edit_fact(
              source_id, now, now),
         )
     return fact_id
+
+
+def resolve_merge_suggestion(conn: sqlite3.Connection, item_id: str, keep_fact_id: str) -> None:
+    """Operator resolution of a merge_suggestion: keep one value, fold the other
+    into deprecated history. Records which fact survived on the (now resolved)
+    adjudication item for lineage. Dismissing instead is a plain status flip."""
+    item = conn.execute(
+        "SELECT payload_json, status, item_kind FROM adjudication_queue WHERE item_id=?",
+        (item_id,),
+    ).fetchone()
+    if item is None or item["item_kind"] != "merge_suggestion":
+        raise WritebackError(f"no merge suggestion {item_id!r}")
+    if item["status"] != "open":
+        raise WritebackError(f"merge suggestion {item_id!r} is already {item['status']}")
+    payload = json.loads(item["payload_json"])
+    pair = {payload["fact_a"], payload["fact_b"]}
+    if keep_fact_id not in pair:
+        raise WritebackError(f"{keep_fact_id!r} is not one of this suggestion's facts")
+    drop_fact_id = (pair - {keep_fact_id}).pop()
+    maybe_snapshot(conn, f"merge {drop_fact_id}->{keep_fact_id}")
+    now = _now()
+    with conn:
+        conn.execute(
+            "UPDATE facts SET status='deprecated', updated_at=? WHERE fact_id=? AND status != 'deprecated'",
+            (now, drop_fact_id),
+        )
+        payload["resolution"] = {"kept": keep_fact_id, "merged": drop_fact_id}
+        conn.execute(
+            "UPDATE adjudication_queue SET status='resolved', payload_json=? WHERE item_id=?",
+            (json.dumps(payload), item_id),
+        )
 
 
 def deprecate_fact(conn: sqlite3.Connection, fact_id: str) -> None:

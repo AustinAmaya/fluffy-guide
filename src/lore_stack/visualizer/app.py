@@ -24,6 +24,7 @@ from lore_stack.writeback import (
     deprecate_entity,
     deprecate_fact,
     manual_edit_fact,
+    resolve_merge_suggestion,
     restore_entity,
 )
 
@@ -371,6 +372,21 @@ def create_app(db_path: str | Path | None = None, *, home: str | Path | None = N
             return jsonify({"error": str(exc)}), 400
         c.close()
         return jsonify(out)
+
+    @app.post("/api/merge/<item_id>/resolve")
+    def resolve_merge_route(item_id):
+        body = request.get_json(silent=True) or {}
+        keep = body.get("keep")
+        if not keep:
+            return jsonify({"error": "keep (fact_id) is required"}), 400
+        c = conn(auto_snapshot=True)
+        try:
+            resolve_merge_suggestion(c, item_id, keep)
+        except WritebackError as exc:
+            c.close()
+            return jsonify({"error": str(exc)}), 400
+        c.close()
+        return jsonify({"ok": True, "item_id": item_id, "kept": keep})
 
     @app.get("/api/staged")
     def list_staged_route():

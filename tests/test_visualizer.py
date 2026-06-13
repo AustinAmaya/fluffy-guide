@@ -228,6 +228,43 @@ def test_home_mode_lore_lifecycle(home_client):
     assert client.get("/api/entities?lore=production").get_json() == []
 
 
+def test_merge_suggestion_surfaces_and_resolves_via_api(client_db):
+    import json
+
+    from lore_stack.models.delta import ClaimInput, LoreDelta
+    from lore_stack.seams.embedder import FakeEmbedder
+    from lore_stack.writeback import apply_delta
+
+    client, conn = client_db
+
+    def carry(sid, obj):
+        return LoreDelta(
+            story_id=sid, story_title="t", story_summary="s",
+            entities=[{"slug": "boxwell", "display_name": "Boxwell", "kind": "character",
+                       "aliases": [], "summary": "s", "confidence": 0.9, "evidence_excerpt": "e"}],
+            claims=[ClaimInput(subject_slug="boxwell", predicate="carries",
+                               object_literal=obj, confidence=0.9, evidence_excerpt="e")],
+            chunks=[])
+    apply_delta(conn, carry("mc1", "cedar tool case"), embedder=FakeEmbedder())
+    apply_delta(conn, carry("mc2", "a cedar case of tools"), embedder=FakeEmbedder())
+
+    conflicts = client.get("/api/conflicts").get_json()
+    merges = [c for c in conflicts if c["payload"].get("kind") == "merge_suggestion"]
+    assert len(merges) == 1
+    item = merges[0]
+    keep = item["payload"]["fact_a"]
+
+    resp = client.post(f"/api/merge/{item['item_id']}/resolve", json={"keep": keep})
+    assert resp.status_code == 200
+    # The other value is now deprecated history; the kept one survives.
+    drop = item["payload"]["fact_b"]
+    assert conn.execute("SELECT status FROM facts WHERE fact_id=?", (drop,)).fetchone()[0] == "deprecated"
+    # Resolved suggestion no longer appears as open.
+    assert not [c for c in client.get("/api/conflicts").get_json()
+                if c["payload"].get("kind") == "merge_suggestion"]
+    assert client.post("/api/merge/mrg_nope/resolve", json={"keep": "x"}).status_code == 400
+
+
 def test_home_mode_staging_inbox(home_client):
     from conftest import load_fixture_delta
     from lore_stack import staging

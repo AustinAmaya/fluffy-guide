@@ -86,3 +86,4 @@ class WritebackReport(BaseModel):
     facts_promoted: list[str] = Field(default_factory=list)
     chunks_created: list[str] = Field(default_factory=list)
     adjudications_opened: list[str] = Field(default_factory=list)
+    merge_suggestions_opened: list[str] = Field(default_factory=list)

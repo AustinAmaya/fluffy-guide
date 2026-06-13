@@ -121,12 +121,23 @@ def _prune(sdir: Path, manifest: dict, retention: int) -> None:
 
 def maybe_snapshot(conn: sqlite3.Connection, operation: str) -> Optional[dict]:
     """Snapshot before a mutation, but only if the connection opted in and points
-    at a real file. Returns the entry, or None if snapshotting was skipped."""
+    at a real file. Returns the entry, or None if snapshotting was skipped.
+
+    Must be called before any write transaction is open: the online backup API
+    blocks on a connection that holds an uncommitted write. All library mutations
+    snapshot before their `with conn:` block, so this guard never trips in normal
+    use -- it turns a future misuse into a clear error instead of a silent hang.
+    """
     if not getattr(conn, "auto_snapshot", False):
         return None
     path = getattr(conn, "lore_path", None)
     if not path or path == ":memory:":
         return None
+    if conn.in_transaction:
+        raise RuntimeError(
+            "maybe_snapshot called inside an open transaction; snapshot before"
+            " opening the write transaction (the backup API would otherwise block)"
+        )
     return create(conn, path, operation)
 
 

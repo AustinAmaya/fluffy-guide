@@ -7,6 +7,7 @@ MIGRATIONS = [
     ("0001_initial", "schema.sql"),
     ("0002_predicates", "migration_0002_predicates.sql"),
     ("0003_staging", "migration_0003_staging.sql"),
+    ("0004_merge_suggestions", "migration_0004_merge_suggestions.sql"),
 ]
 
 
