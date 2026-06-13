@@ -228,6 +228,8 @@ def _apply_inner(conn, delta, checksum, story_text, source_kind, source_uri,
 
 def _apply_claim(conn, story_id: str, idx: int, claim: ClaimInput,
                  report: WritebackReport, now: str) -> None:
+    from lore_stack import registry  # lazy import: breaks the engine<->registry cycle
+
     claim_id = f"clm_{_short_hash(story_id, str(idx))}"
     subject_id = resolve_entity(conn, claim.subject_slug)
     object_entity_id = None
@@ -236,12 +238,19 @@ def _apply_claim(conn, story_id: str, idx: int, claim: ClaimInput,
         object_entity_id = resolve_entity(conn, claim.object_slug)
         unresolved_object = object_entity_id is None
 
+    # Registry normalization: map the extractor's spelling onto the controlled
+    # vocabulary so synonyms corroborate instead of fragmenting. Unregistered
+    # predicates are stored but can never auto-canonize (registered gate below).
+    pred_info = registry.lookup(conn, claim.predicate)
+    predicate = pred_info.predicate_id if pred_info else normalize(claim.predicate)
+    single_valued = pred_info is None or pred_info.cardinality == "single"
+
     def write_claim(canon_state: str, subject: Optional[str]) -> None:
         conn.execute(
             "INSERT INTO claims (claim_id, story_id, subject_entity_id, predicate,"
             " object_entity_id, object_literal, confidence, canon_state, evidence_excerpt,"
             " extractor_payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (claim_id, story_id, subject, claim.predicate, object_entity_id,
+            (claim_id, story_id, subject, predicate, object_entity_id,
              claim.object_literal, claim.confidence, canon_state, claim.evidence_excerpt,
              claim.model_dump_json(), now),
         )
@@ -259,7 +268,7 @@ def _apply_claim(conn, story_id: str, idx: int, claim: ClaimInput,
 
     if claim.canonicality_hint == "motif":
         write_claim("accepted", subject_id)
-        existing = _find_fact(conn, subject_id, claim.predicate, obj_norm, ("motif",))
+        existing = _find_fact(conn, subject_id, predicate, obj_norm, ("motif",))
         if existing:
             conn.execute(
                 "UPDATE facts SET last_supported_story_id=?, confidence=MAX(confidence, ?),"
@@ -268,13 +277,13 @@ def _apply_claim(conn, story_id: str, idx: int, claim: ClaimInput,
             )
         else:
             _insert_fact(conn, subject_id, claim, object_entity_id, "motif",
-                         story_id, claim_id, now, report)
+                         story_id, claim_id, now, report, predicate)
         return
 
     active = conn.execute(
         "SELECT * FROM facts WHERE subject_entity_id=? AND predicate=?"
         " AND status IN ('canonical','soft') ORDER BY fact_id",
-        (subject_id, claim.predicate),
+        (subject_id, predicate),
     ).fetchall()
     match = next(
         (f for f in active if _object_norm(f["object_entity_id"], f["object_literal"]) == obj_norm),
@@ -294,13 +303,18 @@ def _apply_claim(conn, story_id: str, idx: int, claim: ClaimInput,
             match["first_supported_story_id"] is not None
             and match["first_supported_story_id"] != story_id
         )
+        # A competing active value blocks promotion only for single-valued
+        # predicates; a multi-valued predicate (carries, visits) promotes each
+        # value on its own corroboration.
         has_active_sibling = any(f["status"] in ("canonical", "soft") for f in others)
+        blocks_promotion = single_valued and has_active_sibling
         if (
             match["status"] == "soft"
             and claim.canonicality_hint == "candidate"
             and corroborated
             and new_conf >= PROMOTION_CONFIDENCE
-            and not has_active_sibling
+            and pred_info is not None  # only registered predicates auto-canonize
+            and not blocks_promotion
         ):
             conn.execute(
                 "UPDATE facts SET status='canonical', updated_at=? WHERE fact_id=?",
@@ -310,14 +324,15 @@ def _apply_claim(conn, story_id: str, idx: int, claim: ClaimInput,
         return
 
     canonical_sibling = next((f for f in others if f["status"] == "canonical"), None)
-    if canonical_sibling is not None:
-        # Contradiction of canon: open adjudication, never overwrite.
+    if canonical_sibling is not None and single_valued:
+        # Contradiction of canon on a single-valued predicate: open adjudication,
+        # never overwrite. (Multi-valued predicates fall through and coexist.)
         write_claim("needs_review", subject_id)
         item_id = f"adj_{_short_hash(claim_id)}"
         payload = {
             "claim_id": claim_id,
             "subject_entity_id": subject_id,
-            "predicate": claim.predicate,
+            "predicate": predicate,
             "proposed_object_entity_id": object_entity_id,
             "proposed_object_literal": claim.object_literal,
             "existing_fact_id": canonical_sibling["fact_id"],
@@ -330,17 +345,18 @@ def _apply_claim(conn, story_id: str, idx: int, claim: ClaimInput,
             " status, created_at) VALUES (?, 'claim', ?, ?, 'open', ?)",
             (item_id,
              f"claim contradicts canonical fact {canonical_sibling['fact_id']}"
-             f" on predicate {claim.predicate!r}",
+             f" on predicate {predicate!r}",
              json.dumps(payload), now),
         )
         report.adjudications_opened.append(item_id)
         return
 
-    # No exact match, no canonical sibling: soft facts may coexist.
+    # No exact match (and for multi-valued predicates, no blocking conflict):
+    # soft facts coexist.
     write_claim("candidate", subject_id)
     if claim.confidence >= SOFT_FACT_CONFIDENCE:
         _insert_fact(conn, subject_id, claim, object_entity_id, "soft",
-                     story_id, claim_id, now, report)
+                     story_id, claim_id, now, report, predicate)
 
 
 def _find_fact(conn, subject_id, predicate, obj_norm, statuses):
@@ -356,15 +372,15 @@ def _find_fact(conn, subject_id, predicate, obj_norm, statuses):
 
 
 def _insert_fact(conn, subject_id, claim: ClaimInput, object_entity_id, status,
-                 story_id, claim_id, now, report) -> str:
+                 story_id, claim_id, now, report, predicate: str) -> str:
     obj_norm = _object_norm(object_entity_id, claim.object_literal)
-    fact_id = f"fct_{_short_hash(subject_id, claim.predicate, obj_norm, claim_id)}"
+    fact_id = f"fct_{_short_hash(subject_id, predicate, obj_norm, claim_id)}"
     conn.execute(
         "INSERT INTO facts (fact_id, subject_entity_id, predicate, object_entity_id,"
         " object_literal, confidence, status, first_supported_story_id,"
         " last_supported_story_id, source_claim_id, manual_source_id, created_at, updated_at)"
         " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)",
-        (fact_id, subject_id, claim.predicate, object_entity_id, claim.object_literal,
+        (fact_id, subject_id, predicate, object_entity_id, claim.object_literal,
          claim.confidence, status, story_id, story_id, claim_id, now, now),
     )
     report.facts_created.append(fact_id)
@@ -386,6 +402,8 @@ def manual_edit_fact(
 
     Prior active facts on the same (entity, predicate) are preserved as deprecated history.
     """
+    from lore_stack import registry  # lazy import: breaks the engine<->registry cycle
+
     if (object_literal is None) == (object_entity_id is None):
         raise WritebackError("manual edit must set exactly one of object_literal or object_entity_id")
     if not predicate or not predicate.strip():
@@ -401,9 +419,19 @@ def manual_edit_fact(
         ).fetchone()
         if obj is None or obj["status"] == "deprecated":
             raise WritebackError(f"unknown or deprecated object entity {object_entity_id!r}")
+    # The operator is authoritative: an edit using a new predicate *defines* it.
+    # Resolve known spellings to their canonical id for the label and deprecation;
+    # the registration write happens inside the transaction below.
+    range_ = "entity" if object_entity_id is not None else "text"
+    existing_pred = registry.lookup(conn, predicate)
+    predicate = existing_pred.predicate_id if existing_pred else normalize(predicate)
+
     maybe_snapshot(conn, f"edit {entity_id}.{predicate}")
     now = _now()
     with conn:
+        registry.ensure_registered(
+            conn, predicate, registered_by="operator", range_=range_
+        )
         n = conn.execute("SELECT COUNT(*) FROM sources WHERE source_kind='manual'").fetchone()[0]
         source_id = f"src_manual_{n + 1:06d}"
         conn.execute(

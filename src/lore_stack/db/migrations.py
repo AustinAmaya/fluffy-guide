@@ -2,8 +2,11 @@ import sqlite3
 from datetime import datetime, timezone
 from importlib import resources
 
-# Ordered list of (version, schema resource). One migration so far: the full schema.
-MIGRATIONS = [("0001_initial", "schema.sql")]
+# Ordered list of (version, schema resource).
+MIGRATIONS = [
+    ("0001_initial", "schema.sql"),
+    ("0002_predicates", "migration_0002_predicates.sql"),
+]
 
 
 def _now() -> str:
@@ -34,4 +37,8 @@ def init_db(conn: sqlite3.Connection) -> list[str]:
         )
         applied.append(version)
     conn.commit()
+    # Seed the predicate registry (idempotent; preserves operator-added entries).
+    from lore_stack.registry import seed_predicates
+
+    seed_predicates(conn)
     return applied

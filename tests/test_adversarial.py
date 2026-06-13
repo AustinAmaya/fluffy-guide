@@ -89,8 +89,12 @@ def test_double_contradiction_in_one_delta_is_graceful(db_after_c):
         chunks=[],
     )
     report = apply_delta(db, contradiction, embedder=FakeEmbedder())
-    assert len(report.adjudications_opened) == 2
-    assert report.facts_created == []
+    # profession is single-valued: baker contradicts canonical clockmaker -> 1 adjudication.
+    # carries is multi-valued: a wicker basket coexists with the cedar tool case,
+    # no conflict (the registry's cardinality fix for implicit commitment C1).
+    assert len(report.adjudications_opened) == 1
+    assert report.facts_created == ["fct_38794998ada1"]  # the new soft 'carries' fact
+
     canon = {
         r["predicate"]: r["object_literal"]
         for r in db.execute(
@@ -99,6 +103,13 @@ def test_double_contradiction_in_one_delta_is_graceful(db_after_c):
         )
     }
     assert canon == {"profession": "clockmaker", "carries": "cedar tool case"}
+
+    # The wicker basket is a coexisting soft fact, not a contradiction.
+    basket = db.execute(
+        "SELECT status FROM facts WHERE subject_entity_id='ent_boxwell'"
+        " AND predicate='carries' AND object_literal='a wicker basket'"
+    ).fetchone()
+    assert basket["status"] == "soft"
     assert_invariants(db)
 
 

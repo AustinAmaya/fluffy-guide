@@ -1,0 +1,59 @@
+[
+  {
+    "predicate_id": "profession",
+    "aliases": ["occupation", "job", "trade", "vocation", "works as"],
+    "cardinality": "single",
+    "persistence": "permanent",
+    "range": "text"
+  },
+  {
+    "predicate_id": "species",
+    "aliases": ["kind", "race", "creature type"],
+    "cardinality": "single",
+    "persistence": "permanent",
+    "range": "text"
+  },
+  {
+    "predicate_id": "carries",
+    "aliases": ["carrying", "holds", "bears", "brings"],
+    "cardinality": "multi",
+    "persistence": "state",
+    "range": "text"
+  },
+  {
+    "predicate_id": "visits",
+    "aliases": ["visited", "travels to", "goes to", "arrives at"],
+    "cardinality": "multi",
+    "persistence": "episodic",
+    "range": "entity"
+  },
+  {
+    "predicate_id": "trusts",
+    "aliases": ["trusted", "relies on"],
+    "cardinality": "single",
+    "persistence": "state",
+    "range": "entity",
+    "symmetry": "directed"
+  },
+  {
+    "predicate_id": "keeps",
+    "aliases": ["runs", "owns", "tends", "manages"],
+    "cardinality": "single",
+    "persistence": "state",
+    "range": "entity"
+  },
+  {
+    "predicate_id": "claimed_title",
+    "aliases": ["jokingly calls self", "nickname title", "self-styled"],
+    "cardinality": "multi",
+    "persistence": "permanent",
+    "range": "text"
+  },
+  {
+    "predicate_id": "resides_in",
+    "aliases": ["lives in", "home is", "dwells in", "based in"],
+    "cardinality": "single",
+    "persistence": "state",
+    "range": "entity"
+  }
+]

@@ -47,6 +47,14 @@ def assert_invariants(conn):
     #    (status enum makes 'motif' and 'canonical' mutually exclusive per row;
     #    promotion never touches motif rows -- asserted behaviorally in tests.)
 
+    # A6. Every canonical fact's predicate is in the controlled vocabulary. Canon
+    #     is built only from registered predicates (operator edits auto-register).
+    unregistered_canon = conn.execute(
+        "SELECT COUNT(*) FROM facts f WHERE f.status='canonical'"
+        " AND NOT EXISTS (SELECT 1 FROM predicates p WHERE p.predicate_id = f.predicate)"
+    ).fetchone()[0]
+    assert unregistered_canon == 0, "a canonical fact has an unregistered predicate"
+
     # 6. Status values are within the allowed enums (CHECKs held).
     for table, col, allowed in [
         ("entities", "status", {"provisional", "canonical", "deprecated"}),
