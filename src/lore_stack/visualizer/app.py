@@ -20,6 +20,7 @@ from lore_stack.writeback import (
     deprecate_entity,
     deprecate_fact,
     manual_edit_fact,
+    restore_entity,
 )
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -246,6 +247,17 @@ def create_app(db_path: str | Path) -> Flask:
             return jsonify({"error": str(exc)}), 400
         c.close()
         return jsonify({"ok": True, "entity_id": entity_id, "soft": True})
+
+    @app.post("/api/entity/<entity_id>/restore")
+    def restore_entity_route(entity_id):
+        c = conn()
+        try:
+            restore_entity(c, entity_id)
+        except WritebackError as exc:
+            c.close()
+            return jsonify({"error": str(exc)}), 400
+        c.close()
+        return jsonify({"ok": True, "entity_id": entity_id})
 
     @app.post("/api/fact/<fact_id>/deprecate")
     def deprecate_fact_route(fact_id):

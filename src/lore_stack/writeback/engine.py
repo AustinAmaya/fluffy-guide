@@ -88,7 +88,12 @@ def _add_alias(conn: sqlite3.Connection, entity_id: str, alias: str, alias_type:
 
 
 def _object_norm(object_entity_id: Optional[str], object_literal: Optional[str]) -> str:
-    return object_entity_id if object_entity_id is not None else normalize(object_literal or "")
+    # Prefixes keep entity references and literals in disjoint namespaces, so a
+    # literal that happens to look like an internal id can never corroborate
+    # (or contradict) an entity-object fact.
+    if object_entity_id is not None:
+        return f"ent:{object_entity_id}"
+    return f"lit:{normalize(object_literal or '')}"
 
 
 def apply_delta(
@@ -383,12 +388,17 @@ def manual_edit_fact(
         raise WritebackError("manual edit must set exactly one of object_literal or object_entity_id")
     if not predicate or not predicate.strip():
         raise WritebackError("manual edit requires a non-empty predicate")
-    row = conn.execute("SELECT entity_id FROM entities WHERE entity_id=?", (entity_id,)).fetchone()
+    row = conn.execute("SELECT status FROM entities WHERE entity_id=?", (entity_id,)).fetchone()
     if row is None:
         raise WritebackError(f"unknown entity {entity_id!r}")
+    if row["status"] == "deprecated":
+        raise WritebackError(f"entity {entity_id!r} is deprecated; restore it before editing")
     if object_entity_id is not None:
-        if conn.execute("SELECT 1 FROM entities WHERE entity_id=?", (object_entity_id,)).fetchone() is None:
-            raise WritebackError(f"unknown object entity {object_entity_id!r}")
+        obj = conn.execute(
+            "SELECT status FROM entities WHERE entity_id=?", (object_entity_id,)
+        ).fetchone()
+        if obj is None or obj["status"] == "deprecated":
+            raise WritebackError(f"unknown or deprecated object entity {object_entity_id!r}")
     now = _now()
     with conn:
         n = conn.execute("SELECT COUNT(*) FROM sources WHERE source_kind='manual'").fetchone()[0]
@@ -435,6 +445,32 @@ def deprecate_chunk(conn: sqlite3.Connection, chunk_id: str) -> None:
         conn.execute(
             "UPDATE lore_chunks SET status='deprecated', updated_at=? WHERE chunk_id=?",
             (now, chunk_id),
+        )
+
+
+def restore_entity(conn: sqlite3.Connection, entity_id: str) -> None:
+    """Reverse a soft delete conservatively: the entity returns as provisional
+    (corroboration can re-promote it) and its owned chunks as provisional. Facts
+    stay deprecated history — reviving them wholesale could resurrect values that
+    were individually superseded (e.g. by a manual edit); the operator re-asserts
+    specific facts via manual_edit_fact, which is authoritative."""
+    row = conn.execute(
+        "SELECT status FROM entities WHERE entity_id=?", (entity_id,)
+    ).fetchone()
+    if row is None:
+        raise WritebackError(f"unknown entity {entity_id!r}")
+    if row["status"] != "deprecated":
+        raise WritebackError(f"entity {entity_id!r} is not deprecated")
+    now = _now()
+    with conn:
+        conn.execute(
+            "UPDATE entities SET status='provisional', updated_at=? WHERE entity_id=?",
+            (now, entity_id),
+        )
+        conn.execute(
+            "UPDATE lore_chunks SET status='provisional', updated_at=?"
+            " WHERE entity_id=? AND status='deprecated'",
+            (now, entity_id),
         )
 
 

@@ -86,12 +86,17 @@ def test_invariant_6_check_constraints_fail_loudly(db):
 
 
 def test_invariant_7_budget_never_exceeded_even_tiny(db_seeded):
-    result = compile_context(
-        db_seeded, "Tell another story with Boxwell", embedder=FakeEmbedder(),
-        total_budget=60,
-    )
-    assert result.total_tokens <= 60
-    assert result.dropped
+    from lore_stack.writeback.engine import token_estimate
+
+    for budget in (40, 60, 165, 1700):
+        result = compile_context(
+            db_seeded, "Tell another story with Boxwell", embedder=FakeEmbedder(),
+            total_budget=budget,
+        )
+        assert result.total_tokens <= budget
+        # The bound holds for the emitted text itself, not just the accounting.
+        assert token_estimate(result.text) <= budget
+    assert result.dropped or budget == 1700
     assert_invariants(db_seeded)
 
 

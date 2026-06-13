@@ -145,6 +145,42 @@ def test_invalid_ui_writes_are_rejected(client_db):
     assert_invariants(conn)
 
 
+def test_restore_reverses_soft_delete_without_zombies(client_db):
+    client, conn = client_db
+    assert client.post("/api/entity/ent_boxwell/deprecate").status_code == 200
+
+    # No zombie facts: editing a deprecated entity is rejected.
+    resp = client.post(
+        "/api/entity/ent_boxwell/edit", json={"predicate": "p", "value": "v"}
+    )
+    assert resp.status_code == 400
+    assert "restore" in resp.get_json()["error"]
+
+    assert client.post("/api/entity/ent_boxwell/restore").status_code == 200
+    assert conn.execute(
+        "SELECT status FROM entities WHERE entity_id='ent_boxwell'"
+    ).fetchone()[0] == "provisional"
+    # Chunks revive; facts remain history, revivable individually via manual edit.
+    assert conn.execute(
+        "SELECT COUNT(*) FROM lore_chunks WHERE entity_id='ent_boxwell'"
+        " AND status='provisional'"
+    ).fetchone()[0] > 0
+    assert conn.execute(
+        "SELECT COUNT(*) FROM facts WHERE subject_entity_id='ent_boxwell'"
+        " AND status != 'deprecated'"
+    ).fetchone()[0] == 0
+    edit = client.post(
+        "/api/entity/ent_boxwell/edit",
+        json={"predicate": "profession", "value": "clockmaker"},
+    )
+    assert edit.status_code == 200
+    assert edit.get_json()["status"] == "canonical"
+
+    # Restoring a non-deprecated entity is rejected.
+    assert client.post("/api/entity/ent_boxwell/restore").status_code == 400
+    assert_invariants(conn)
+
+
 def test_export_subgraph(client_db):
     client, _ = client_db
     full = client.get("/api/export").get_json()

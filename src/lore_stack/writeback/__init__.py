@@ -5,6 +5,7 @@ from lore_stack.writeback.engine import (
     deprecate_entity,
     deprecate_fact,
     manual_edit_fact,
+    restore_entity,
 )
 
 __all__ = [
@@ -13,5 +14,6 @@ __all__ = [
     "deprecate_entity",
     "deprecate_fact",
     "deprecate_chunk",
+    "restore_entity",
     "WritebackError",
 ]

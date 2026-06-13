@@ -12,6 +12,7 @@ One entry per non-obvious decision; one-line summaries up top.
 - [Deprecation cascade scope](#cascade) — subject+object facts and entity-owned chunks; other entities' prose may still mention the name.
 - [Adjudication resolution UI not built](#adjudication) — read-only conflict list; manual edit supersedes.
 - [PowerShell `-Db` parameter conflict](#ps-db) — renamed to `-DbPath` in the skill stub.
+- [Verifier round: budget joiners, object namespaces, restore](#verifier-round) — three fixes from independent fresh-context review.
 
 ## Environment: hook python is the Hermes venv {#environment}
 `python` on PATH resolves to `...\hermes\hermes-agent\venv` — it has pytest and
@@ -84,3 +85,23 @@ edit (which deprecates the loser and records a manual source).
 ## PowerShell `-Db` parameter conflict {#ps-db}
 A script param named `-Db` collides with the alias of the common `-Debug`
 parameter and fails at parse time. The Hermes stub uses `-DbPath`.
+
+## Verifier round: budget joiners, object namespaces, restore {#verifier-round}
+A fresh-context verifier audit confirmed the contract and surfaced three nits,
+all fixed:
+1. **Budget joiner accounting** — the packing loop now charges every joining
+   newline (header newline, lane separator, body joiners, final trailer), so
+   `token_estimate(emitted_text) <= budget` holds exactly, not just the
+   internal accounting (per-piece ceils sum to at least the whole-text ceil).
+2. **Object namespaces** — `_object_norm` prefixes `ent:`/`lit:` so a literal
+   that textually equals an internal entity id can never corroborate or
+   contradict an entity-reference fact.
+3. **Restore + zombie rejection** — manual edits on deprecated entities are
+   rejected ("restore first"); `restore_entity` (library/CLI/API) revives the
+   entity (as provisional) and its owned chunks. Facts deliberately stay
+   deprecated history: blanket revival could resurrect values superseded by
+   manual edits; the operator re-asserts specific facts via `edit-fact`.
+Known accepted behaviors: counter-derived ids (`cmp_N`, `src_manual_N`) are
+safe because nothing hard-deletes; a contradiction whose object slug cannot be
+resolved is parked as a `needs_review` claim without an adjudication item (the
+conflict is not yet established).

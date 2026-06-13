@@ -77,21 +77,32 @@ def compile_context(
     dropped: list[dict] = []
     chosen: dict[str, list[Candidate]] = {lane: [] for lane in LANE_ORDER}
     total_tokens = 0
+    any_content = False
     for lane in LANE_ORDER:
         lane_tokens = 0
         header_cost = token_estimate(LANE_HEADERS[lane])
         for cand in by_lane[lane]:
             cost = cand.row["token_estimate"]
-            header_extra = header_cost if not chosen[lane] else 0
+            # Joiner accounting: opening a lane pays its header + newline (and a
+            # lane separator / the final trailing newline); each further chunk in
+            # a lane pays its joining newline. Per-piece ceil(len/4) sums to at
+            # least the estimate of the assembled text, so the bound is real.
+            if not chosen[lane]:
+                extra = header_cost + 1 + 1  # header, its newline, separator/trailer
+                if not any_content:
+                    extra += 1  # final trailing newline, charged once
+            else:
+                extra = 1  # "\n" between bodies
             if lane_tokens + cost > lane_budgets.get(lane, 0):
                 dropped.append(_trace(cand, lane, "lane_budget_exceeded"))
                 continue
-            if total_tokens + cost + header_extra > total_budget:
+            if total_tokens + cost + extra > total_budget:
                 dropped.append(_trace(cand, lane, "total_budget_exceeded"))
                 continue
             chosen[lane].append(cand)
             lane_tokens += cost
-            total_tokens += cost + header_extra
+            total_tokens += cost + extra
+            any_content = True
             selected.append(_trace(cand, lane, "included"))
 
     parts = []

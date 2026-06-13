@@ -17,6 +17,7 @@ from lore_stack.writeback import (
     deprecate_entity,
     deprecate_fact,
     manual_edit_fact,
+    restore_entity,
 )
 
 
@@ -165,6 +166,17 @@ def _cmd_deprecate(args) -> int:
     return 0
 
 
+def _cmd_restore(args) -> int:
+    conn = connect(args.db)
+    try:
+        restore_entity(conn, args.entity_id)
+    except WritebackError as exc:
+        print(f"restore rejected: {exc}", file=sys.stderr)
+        return 1
+    print("ok (entity restored as provisional; revive facts via edit-fact)")
+    return 0
+
+
 def _cmd_export(args) -> int:
     from lore_stack.visualizer.app import export_subgraph
 
@@ -242,6 +254,11 @@ def main(argv=None) -> int:
     p.add_argument("--fact-id", default=None)
     p.add_argument("--chunk-id", default=None)
     p.set_defaults(func=_cmd_deprecate)
+
+    p = sub.add_parser("restore", help="reverse a soft delete of an entity")
+    p.add_argument("--db", required=True)
+    p.add_argument("--entity-id", required=True)
+    p.set_defaults(func=_cmd_restore)
 
     p = sub.add_parser("export", help="export the lore subgraph as JSON or markdown")
     p.add_argument("--db", required=True)
