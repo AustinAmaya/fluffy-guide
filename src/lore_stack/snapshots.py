@@ -146,6 +146,18 @@ def list_snapshots(db_path: str | Path) -> list[dict]:
     return list(reversed(_read_manifest(db_path)["entries"]))
 
 
+def snapshot_file(db_path: str | Path, seq: int) -> Path:
+    """Resolve the on-disk file for snapshot `seq` (for read-only preview), or raise."""
+    sdir = snapshot_dir(db_path)
+    match = next((e for e in _read_manifest(db_path)["entries"] if e["seq"] == seq), None)
+    if match is None:
+        raise FileNotFoundError(f"no snapshot with seq {seq} for {Path(db_path).stem!r}")
+    path = sdir / match["file"]
+    if not path.exists():
+        raise FileNotFoundError(f"snapshot file missing: {path}")
+    return path
+
+
 def rollback(db_path: str | Path, seq: int) -> dict:
     """Restore the lore to snapshot `seq`, after snapshotting the current state
     (so the rollback is itself undoable). Overwrites the live file in place via

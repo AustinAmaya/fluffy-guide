@@ -434,6 +434,20 @@ def create_app(db_path: str | Path | None = None, *, home: str | Path | None = N
     def list_snapshots_route():
         return jsonify(snapshots.list_snapshots(_lore_path()))
 
+    @app.get("/api/snapshots/<int:seq>/preview")
+    def preview_snapshot_route(seq):
+        """Read-only view of a snapshot's lore graph, without restoring it."""
+        try:
+            snap_path = snapshots.snapshot_file(_lore_path(), seq)
+        except FileNotFoundError as exc:
+            return jsonify({"error": str(exc)}), 404
+        c = connect(snap_path)  # SELECT-only; never mutated, never auto-snapshots
+        try:
+            out = export_subgraph(c)
+        finally:
+            c.close()
+        return jsonify(out)
+
     @app.post("/api/snapshots/<int:seq>/rollback")
     def rollback_route(seq):
         try:

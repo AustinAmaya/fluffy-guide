@@ -399,16 +399,47 @@ async function loadPanels(){
 
   const snaps = await api("/api/snapshots");
   document.getElementById("history").innerHTML = "<h2>History</h2>" +
-    '<div class="small dim">Each entry is the state just before an operation. Rolling back is itself undoable.</div>' +
+    '<div class="small dim">Each entry is the state just before an operation. Click "preview" to inspect a snapshot in the graph before rolling back; rolling back is itself undoable.</div>' +
     (snaps.length ? snaps.map(s => {
       const c = s.counts;
       return `<div class="fact">
         <span class="small">before <b>${esc(s.operation)}</b>
           <span class="dim">(${c.stories}st ${c.entities}ent ${c.facts}fct${c.open_conflicts ? ", " + c.open_conflicts + "cf" : ""})</span></span>
-        <button class="small" onclick="rollback(${s.seq})">roll back here</button>
+        <button class="small" onclick="previewSnapshot(${s.seq}, '${esc(s.operation)}')">preview</button>
       </div>`;
     }).join("") : '<div class="dim">no snapshots yet</div>');
 }
+
+let previewingSeq = null;
+
+async function previewSnapshot(seq, operation){
+  try {
+    G = await api(`/api/snapshots/${seq}/preview`);
+  } catch (e){ alert("Preview failed: " + e.message); return; }
+  previewingSeq = seq;
+  drawGraph();
+  // A banner over the graph: this is a read-only past state, with the actions.
+  let banner = document.getElementById("previewBanner");
+  if (!banner){
+    banner = document.createElement("div");
+    banner.id = "previewBanner";
+    banner.style.cssText = "position:absolute; top:8px; right:8px; z-index:3; background:var(--panel);"
+      + " border:1px solid var(--soft); border-radius:6px; padding:8px 10px; max-width:280px;";
+    document.getElementById("graph").appendChild(banner);
+  }
+  banner.innerHTML = `<div class="small"><b>Previewing snapshot ${String(seq).padStart(6,'0')}</b>`
+    + ` <span class="dim">(state before ${esc(operation)})</span></div>`
+    + '<div class="small dim" style="margin:4px 0">Read-only — this is not the current lore.</div>'
+    + `<button class="small" onclick="rollback(${seq})">roll back to this</button> `
+    + '<button class="small" onclick="exitPreview()">back to current</button>';
+}
+
+function clearPreview(){
+  previewingSeq = null;
+  const b = document.getElementById("previewBanner");
+  if (b) b.remove();
+}
+function exitPreview(){ clearPreview(); loadGraph(); }
 
 async function resolveMerge(itemId, keepFactId){
   try { await post(`/api/merge/${encodeURIComponent(itemId)}/resolve`, {keep: keepFactId});
@@ -418,7 +449,11 @@ async function resolveMerge(itemId, keepFactId){
 
 async function rollback(seq){
   if (!confirm("Roll the lore back to this point? The current state is snapshotted first, so this is reversible.")) return;
-  try { await post(`/api/snapshots/${seq}/rollback`); await loadGraph(); }
+  try {
+    await post(`/api/snapshots/${seq}/rollback`);
+    clearPreview();
+    await loadGraph();
+  }
   catch (e){ alert("Rollback failed: " + e.message); }
 }
 

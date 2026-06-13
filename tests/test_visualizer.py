@@ -317,6 +317,23 @@ def test_home_mode_snapshots_and_rollback(home_client):
     target = snaps[0]["seq"]
     assert snaps[0]["operation"].startswith("edit ent_boxwell")
 
+    # Preview a snapshot read-only: it shows the PRIOR state without mutating
+    # the live lore. The snapshot before the bad edit still has clockmaker canon
+    # and no baker fact; the live lore still has the baker edit applied.
+    preview = client.get(f"/api/snapshots/{target}/preview?lore=production").get_json()
+    preview_profs = {
+        f["object_literal"] for e in preview["entities"] for f in e["facts"]
+        if f["predicate"] == "profession"
+    }
+    assert "clockmaker" in preview_profs and "baker" not in preview_profs
+    # Preview did not touch the live lore: it still has the baker edit applied.
+    live_facts = client.get("/api/facts?entity=ent_boxwell&lore=production").get_json()
+    live_baker = [f for f in live_facts
+                  if f["predicate"] == "profession" and f["object_literal"] == "baker"
+                  and f["status"] == "canonical"]
+    assert len(live_baker) == 1
+    assert client.get("/api/snapshots/9999/preview?lore=production").status_code == 404
+
     resp = client.post(f"/api/snapshots/{target}/rollback?lore=production")
     assert resp.status_code == 200
 
