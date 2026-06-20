@@ -195,15 +195,26 @@ fact; delete = soft deprecate).
   of a 1M window. Over-budget chunks are dropped whole, by priority — never
   truncated mid-fact.
 
-## Hermes integration (go-live)
+## Hermes integration (one-command install)
 
-Two skills ship under `src/lore_stack/hermes/` (installed into `~/.hermes/skills/`):
-**`lore-extraction`** — instructions any tool-using LLM follows to turn a told story
-(+ operator guidance) into structured lore, split into a *direct-to-canon* delta and
-a *stage-for-review* delta — and **`narrative-lore`** — a thin CLI shell that stores
-them (`ingest-delta --canon`, `stage-delta`) and compiles continuity
-(`compile-context`). lore-stack stays model-free: **Hermes' own pinned LLM is the
-extractor**; nothing in the core imports a model. See `docs/GO_LIVE.md`.
+lore-stack is a **shared world-memory** any Hermes consumer can wire into; the
+current consumer is a Bear & Papa storyteller, but the integration is neutral.
+Two skills ship under `src/lore_stack/hermes/` — **`lore-extract`** — instructions
+any tool-using LLM follows to turn a piece of text (+ operator guidance) into
+structured lore, split into a *direct-to-canon* delta and a *stage-for-review*
+delta — and **`lore-memory`** — a thin CLI shell that stores them (`ingest-delta
+--canon`, `stage-delta`) and compiles continuity (`compile-context`, the shared
+read primitive). lore-stack stays model-free: **Hermes' own pinned LLM is the
+extractor**; nothing in the core imports a model.
+
+Wire a Hermes home in one command — it copies the skills, writes a `.env`
+(`LORE_STACK_PYTHON` / `_EMBEDDER` / `_DB`), and inits a bare lore:
+
+```bash
+lore-stack init-hermes --home <HERMES_HOME> --embedder ollama
+```
+
+See `docs/INSTALL.md` for the full flow.
 
 ## Live model adapters (opt-in)
 

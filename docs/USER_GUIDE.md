@@ -34,6 +34,23 @@ four example worlds and opens the visualizer:
 powershell -ExecutionPolicy Bypass -File demo.ps1
 ```
 
+### Wiring a Hermes profile (one command)
+
+To give a Hermes profile a persistent world-memory, install in one command — it
+copies the two skills into `<home>/skills/`, writes a `<home>/.env`
+(`LORE_STACK_PYTHON` / `LORE_STACK_EMBEDDER` / `LORE_STACK_DB`), and inits a bare
+lore. Idempotent and non-destructive (existing skill dirs are backed up to
+`<name>.bak` unless `--force`):
+
+```bash
+lore-stack init-hermes --home <HERMES_HOME> --embedder ollama
+```
+
+Because `.env` sets **`LORE_STACK_DB`**, `--db` is then optional on `init-db`,
+`ingest-delta`, `stage-delta`, `stage`, and `compile-context` — they fall back to
+that env var. The one manual step is pinning the `lore-extract` skill to a capable
+model. See `docs/INSTALL.md` for the full flow.
+
 ### Live model adapters (opt-in)
 
 By default everything runs on deterministic fakes — no API keys, no network. Two
@@ -203,8 +220,8 @@ with an already-seen checksum is a detectable no-op.
 Add **`--embedder openai`** (or set `LORE_STACK_EMBEDDER=openai`) on `ingest-delta`,
 `stage-delta`, `stage apply`, and `compile-context` for live OpenAI semantic recall
 (needs `lore-stack[embeddings]` + `OPENAI_API_KEY`); the default is the fake
-embedder. Use the same embedder to ingest and to query. See `docs/GO_LIVE.md` for
-the full Hermes wiring.
+embedder. Use the same embedder to ingest and to query. See `docs/INSTALL.md` for
+the one-command Hermes wiring.
 
 ---
 
@@ -388,15 +405,19 @@ carry the `model` marker and are excluded.
 
 ## Command reference
 
+For the `--db`-taking commands marked below, `--db` is optional when
+`LORE_STACK_DB` is set (the value `init-hermes` writes to `.env`).
+
 | Command | What it does |
 |---|---|
-| `init-db --db` | Create the schema (idempotent migrations + registry seed). |
-| `ingest-delta --db --file [--story-text] [--canon] [--embedder]` | Write back a `LoreDelta` JSON; `--canon` = operator-authoritative direct-to-canon. |
-| `stage-delta --db --file [--story-text]` | Stage a pre-made `LoreDelta` JSON for review (writes nothing yet). |
+| `init-hermes --home [--db] [--embedder] [--python] [--force]` | One-command install into a Hermes home: copy skills, write `.env`, init a bare lore. |
+| `init-db [--db]` | Create the schema (idempotent migrations + registry seed). |
+| `ingest-delta [--db] --file [--story-text] [--canon] [--embedder]` | Write back a `LoreDelta` JSON; `--canon` = operator-authoritative direct-to-canon. |
+| `stage-delta [--db] --file [--story-text]` | Stage a pre-made `LoreDelta` JSON for review (writes nothing yet). |
 | `ingest-story --db --file --fixtures [--story-id]` | Extract (FakeExtractor) + write back a story file. |
 | `stage-story --db --file --fixtures [--story-id]` | Extract a story into the review queue (writes nothing). |
-| `stage list\|show\|apply\|discard --db [--id] [--selection] [--status] [--embedder]` | Drive the review queue. |
-| `compile-context --db --query [--budget] [--out] [--json] [--embedder]` | Compile a bounded context block. |
+| `stage list\|show\|apply\|discard [--db] [--id] [--selection] [--status] [--embedder]` | Drive the review queue. |
+| `compile-context [--db] --query [--budget] [--out] [--json] [--embedder]` | Compile a bounded context block. |
 | `inspect entity\|conflicts\|motifs\|stories --db [--slug]` | Inspect lore state. |
 | `edit-fact --db --entity-id --predicate [--value] [--object-entity-id]` | Authoritative manual edit. |
 | `deprecate --db [--entity-id] [--fact-id] [--chunk-id]` | Soft-delete. |
