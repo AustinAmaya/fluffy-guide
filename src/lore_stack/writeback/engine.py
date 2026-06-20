@@ -46,6 +46,30 @@ def slugify(text: str) -> str:
     return slug or "unnamed"
 
 
+def exclusion_key(text: str) -> str:
+    """Normalize a name or slug to an entity-exclusion key. Lowercases, strips an
+    'ent-'/'ent_' prefix the extractor sometimes prepends to slugs, and collapses
+    whitespace/underscores to hyphens, so 'ent-bear', 'Bear', and 'bear' all map to
+    'bear'. Matching on this key makes exclusions robust to slug spelling."""
+    s = (text or "").strip().lower()
+    for p in ("ent-", "ent_"):
+        if s.startswith(p):
+            s = s[len(p):]
+            break
+    s = re.sub(r"[\s_]+", "-", s)
+    s = re.sub(r"[^a-z0-9-]+", "", s)
+    return s.strip("-")
+
+
+def load_exclusions(conn: sqlite3.Connection) -> set:
+    """The set of normalized exclusion keys configured for this lore (empty if the
+    db predates migration 0007)."""
+    try:
+        return {r[0] for r in conn.execute("SELECT name FROM entity_exclusions")}
+    except sqlite3.OperationalError:
+        return set()
+
+
 def token_estimate(text: str) -> int:
     return math.ceil(len(text) / 4)
 
@@ -170,8 +194,42 @@ def _apply_inner(conn, delta, checksum, story_text, source_kind, source_uri,
          delta.model_dump_json(), now),
     )
 
+    # --- operator-configured exclusions ---
+    # Entities the consumer owns outside the lore (e.g. protagonists authored in a
+    # SOUL document) are dropped here -- together with any claim that references them
+    # and any chunk bound to them -- before a single row is written. Matching is on
+    # the normalized exclusion key, so the extractor's slug spelling doesn't matter.
+    excl = load_exclusions(conn)
+    if excl:
+        def _is_excluded(u) -> bool:
+            return any(exclusion_key(c) in excl for c in (u.slug, u.display_name, *u.aliases))
+
+        def _ref_excluded(slug) -> bool:
+            return slug is not None and exclusion_key(slug) in excl
+
+        entities = []
+        for u in delta.entities:
+            if _is_excluded(u):
+                report.entities_excluded.append(u.slug)
+            else:
+                entities.append(u)
+        claims = []
+        for c in delta.claims:
+            if _ref_excluded(c.subject_slug) or _ref_excluded(c.object_slug):
+                report.claims_excluded += 1
+            else:
+                claims.append(c)
+        chunks = []
+        for ch in delta.chunks:
+            if _ref_excluded(ch.entity_slug):
+                report.chunks_excluded += 1
+            else:
+                chunks.append(ch)
+    else:
+        entities, claims, chunks = delta.entities, delta.claims, delta.chunks
+
     # --- entities ---
-    for upsert in delta.entities:
+    for upsert in entities:
         entity_id = None
         for candidate in [upsert.slug, upsert.display_name, *upsert.aliases]:
             entity_id = resolve_entity(conn, candidate)
@@ -216,12 +274,12 @@ def _apply_inner(conn, delta, checksum, story_text, source_kind, source_uri,
             report.entities_promoted.append(entity_id)
 
     # --- claims -> facts ---
-    for idx, claim in enumerate(delta.claims):
+    for idx, claim in enumerate(claims):
         _apply_claim(conn, delta.story_id, idx, claim, report, now, reviewed, embedder,
                      authoritative)
 
     # --- chunks ---
-    for idx, chunk in enumerate(delta.chunks):
+    for idx, chunk in enumerate(chunks):
         entity_id = resolve_entity(conn, chunk.entity_slug) if chunk.entity_slug else None
         scope = "entity" if entity_id else "story"
         chunk_id = f"chk_{_short_hash(delta.story_id, str(idx), chunk.title)}"

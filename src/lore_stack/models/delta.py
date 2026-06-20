@@ -102,3 +102,8 @@ class WritebackReport(BaseModel):
     chunks_created: list[str] = Field(default_factory=list)
     adjudications_opened: list[str] = Field(default_factory=list)
     merge_suggestions_opened: list[str] = Field(default_factory=list)
+    # Dropped before writeback by operator-configured entity exclusions (entities
+    # owned outside the lore, e.g. protagonists). See entity_exclusions / writeback.
+    entities_excluded: list[str] = Field(default_factory=list)
+    claims_excluded: int = 0
+    chunks_excluded: int = 0

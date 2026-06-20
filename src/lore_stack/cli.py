@@ -442,6 +442,52 @@ def _cmd_lores(args) -> int:
     return 0
 
 
+def _cmd_exclude(args) -> int:
+    """Manage entity exclusions: entities whose slug/display/alias normalizes to an
+    excluded key are dropped at ingest (with their claims + bound chunks). Used to
+    keep entities a consumer owns elsewhere -- e.g. a storyteller's protagonists --
+    out of the lore entirely."""
+    from datetime import datetime, timezone
+
+    from lore_stack.writeback.engine import exclusion_key
+
+    db = _db(args)
+    if db is None:
+        return 1
+    conn = connect(db)
+    if args.action == "list":
+        rows = conn.execute("SELECT name, label FROM entity_exclusions ORDER BY name").fetchall()
+        if not rows:
+            print("(no exclusions)")
+            return 0
+        for r in rows:
+            extra = f"  (as {r['label']!r})" if r["label"] and exclusion_key(r["label"]) != r["name"] else ""
+            print(f"  {r['name']}{extra}")
+        return 0
+    if not args.names:
+        print(f"exclude {args.action} requires one or more names", file=sys.stderr)
+        return 1
+    now = datetime.now(timezone.utc).isoformat()
+    with conn:
+        if args.action == "add":
+            keys = []
+            for name in args.names:
+                key = exclusion_key(name)
+                if not key:
+                    continue
+                conn.execute(
+                    "INSERT OR REPLACE INTO entity_exclusions (name, label, created_at)"
+                    " VALUES (?, ?, ?)", (key, name, now))
+                keys.append(key)
+            print(f"excluded: {', '.join(keys)}  (dropped from future ingests)")
+        else:  # remove
+            removed = [exclusion_key(n) for n in args.names
+                       if conn.execute("DELETE FROM entity_exclusions WHERE name=?",
+                                       (exclusion_key(n),)).rowcount]
+            print(f"removed: {', '.join(removed) or '(none matched)'}")
+    return 0
+
+
 def _copy_traversable(src, dest: Path) -> None:
     """Recursively copy an importlib.resources Traversable tree to a real path.
     Uses the Traversable protocol (iterdir/is_dir/read_bytes) so it works whether
@@ -643,6 +689,13 @@ def main(argv=None) -> int:
     p.add_argument("--force", action="store_true",
                    help="overwrite existing skill dirs in place instead of backing them up to .bak")
     p.set_defaults(func=_cmd_init_hermes)
+
+    p = sub.add_parser("exclude",
+                       help="manage entity exclusions: entities dropped at ingest (e.g. protagonists owned in SOUL.md)")
+    p.add_argument("action", choices=["add", "remove", "list"])
+    p.add_argument("names", nargs="*", help="entity names/slugs to exclude (for add/remove)")
+    p.add_argument("--db", default=None, help="lore db path (default: $LORE_STACK_DB)")
+    p.set_defaults(func=_cmd_exclude)
 
     p = sub.add_parser("snapshot", help="manage point-in-time snapshots of a lore")
     p.add_argument("action", choices=["create", "list", "rollback"])
