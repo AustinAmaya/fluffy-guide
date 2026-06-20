@@ -12,7 +12,9 @@ conservatively, retrieves with FTS5 + exact cosine, and compiles a bounded,
 lane-based context block. **No LLM and no agent are in the loop** — the only two
 seams a model could plug into are the Extractor (`story → LoreDelta`) and the
 Embedder (`text → vector`), both Protocols in `src/lore_stack/seams/` with
-deterministic fakes as the default.
+deterministic fakes as the default. Opt-in live embedders live in
+`src/lore_stack_adapters/` (OpenAI cloud; Ollama local) and are selected via
+`--embedder`/`LORE_STACK_EMBEDDER`; the gate always runs on the fake.
 
 ## The cardinal rule: determinism
 

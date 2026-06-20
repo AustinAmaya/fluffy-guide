@@ -23,6 +23,9 @@ anthropic = [
 embeddings = [
     "openai>=1.0",
 ]
+ollama = [
+    "ollama>=0.3",
+]
 
 [project.scripts]
 lore-stack = "lore_stack.cli:main"

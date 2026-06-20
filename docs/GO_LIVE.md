@@ -38,6 +38,12 @@ setx OPENAI_API_KEY "sk-..."
 setx LORE_STACK_EMBEDDER "openai"
 ```
 
+**Local / offline alternative — Ollama** (no API key, no cloud): instead of the
+above, `pip install -e ".[ollama]"`, run `ollama serve` with the model pulled
+(`ollama pull nomic-embed-text`), and `setx LORE_STACK_EMBEDDER "ollama"`. Honors
+`OLLAMA_HOST`. Pick one embedder and use it consistently — vectors from different
+embedders don't cross.
+
 ### 2. Point the skills at the right Python
 
 The skills shell `python -m lore_stack.cli`, so `LORE_STACK_PYTHON` must point at

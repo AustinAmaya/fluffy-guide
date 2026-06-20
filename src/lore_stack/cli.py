@@ -36,19 +36,25 @@ def _load_delta(path: str) -> LoreDelta:
 
 def _embedder(args):
     """Pick the embedder: --embedder, else $LORE_STACK_EMBEDDER, else 'fake'.
-    Returns None (after printing why) if 'openai' is requested but unavailable, so
-    the caller can return a non-zero exit code."""
+    Returns None (after printing why) if a live embedder is requested but
+    unavailable, so the caller can return a non-zero exit code."""
     choice = getattr(args, "embedder", None) or os.environ.get("LORE_STACK_EMBEDDER") or "fake"
-    if choice == "openai":
-        try:
-            from lore_stack_adapters.openai_embedder import OpenAIEmbedder
-            return OpenAIEmbedder()
-        except ImportError:
-            print("openai embedder needs: pip install 'lore-stack[embeddings]'", file=sys.stderr)
-        except Exception as exc:  # e.g. OPENAI_API_KEY missing
-            print(f"openai embedder unavailable: {exc}", file=sys.stderr)
-        return None
-    return FakeEmbedder()
+    if choice == "fake":
+        return FakeEmbedder()
+    # Live embedders: opt-in adapters; the package extra carries the SDK.
+    live = {
+        "openai": ("lore_stack_adapters.openai_embedder", "OpenAIEmbedder", "embeddings"),
+        "ollama": ("lore_stack_adapters.ollama_embedder", "OllamaEmbedder", "ollama"),
+    }
+    module, cls, extra = live[choice]
+    try:
+        import importlib
+        return getattr(importlib.import_module(module), cls)()
+    except ImportError:
+        print(f"{choice} embedder needs: pip install 'lore-stack[{extra}]'", file=sys.stderr)
+    except Exception as exc:  # e.g. OPENAI_API_KEY missing, or Ollama not running
+        print(f"{choice} embedder unavailable: {exc}", file=sys.stderr)
+    return None
 
 
 def _cmd_ingest_delta(args) -> int:
@@ -423,7 +429,7 @@ def main(argv=None) -> int:
     p.add_argument("--story-text", default=None, help="optional story text file")
     p.add_argument("--canon", action="store_true",
                    help="operator-vouched DIRECT-TO-CANON: write every claim as canonical now")
-    p.add_argument("--embedder", choices=["fake", "openai"], default=None,
+    p.add_argument("--embedder", choices=["fake", "openai", "ollama"], default=None,
                    help="embedder backend (default: $LORE_STACK_EMBEDDER or fake)")
     p.set_defaults(func=_cmd_ingest_delta)
 
@@ -454,7 +460,7 @@ def main(argv=None) -> int:
     p.add_argument("--status", default="pending", choices=["pending", "applied", "discarded"])
     p.add_argument("--selection", default=None,
                    help='JSON subset to apply, e.g. {"entities":[0],"claims":[0,1]}')
-    p.add_argument("--embedder", choices=["fake", "openai"], default=None,
+    p.add_argument("--embedder", choices=["fake", "openai", "ollama"], default=None,
                    help="embedder backend for 'apply' (default: $LORE_STACK_EMBEDDER or fake)")
     p.set_defaults(func=_cmd_stage)
 
@@ -464,7 +470,7 @@ def main(argv=None) -> int:
     p.add_argument("--budget", type=int, default=DEFAULT_TOTAL_BUDGET)
     p.add_argument("--out", default=None)
     p.add_argument("--json", action="store_true", help="emit full audit JSON instead of text")
-    p.add_argument("--embedder", choices=["fake", "openai"], default=None,
+    p.add_argument("--embedder", choices=["fake", "openai", "ollama"], default=None,
                    help="embedder backend (default: $LORE_STACK_EMBEDDER or fake)")
     p.set_defaults(func=_cmd_compile_context)
 

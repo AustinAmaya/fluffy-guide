@@ -42,12 +42,16 @@ deterministic gate on the fakes:
 
 - **Extraction:** `pip install lore-stack[anthropic]`, set `ANTHROPIC_API_KEY`, and
   use `lore_stack_adapters.anthropic_extractor.AnthropicExtractor`.
-- **Embeddings:** `pip install lore-stack[embeddings]`, set `OPENAI_API_KEY`, and
-  pass `lore_stack_adapters.openai_embedder.OpenAIEmbedder()` wherever an embedder
-  is taken — e.g. `apply_delta(..., embedder=OpenAIEmbedder())` and
-  `compile_context(..., embedder=OpenAIEmbedder())`. Live and fake embeddings
-  coexist in one lore (retrieval gates by model name), so use the *same* embedder
-  to ingest and to query.
+- **Embeddings (cloud):** `pip install lore-stack[embeddings]`, set `OPENAI_API_KEY`,
+  and use `--embedder openai` (or `lore_stack_adapters.openai_embedder.OpenAIEmbedder`).
+- **Embeddings (local, offline):** `pip install lore-stack[ollama]`, run `ollama
+  serve` with `nomic-embed-text` pulled, and use `--embedder ollama` (or
+  `lore_stack_adapters.ollama_embedder.OllamaEmbedder`). Honors `OLLAMA_HOST`.
+
+Live and fake embeddings coexist in one lore (retrieval gates by model name), so use
+the *same* embedder to ingest and to query. The `--embedder {fake,openai,ollama}`
+flag (or `LORE_STACK_EMBEDDER`) selects it on `ingest-delta`, `stage apply`, and
+`compile-context`.
 
 ---
 

@@ -215,13 +215,20 @@ stay the default everywhere — `pytest -m "not model"` is unaffected.
   calls `claude-opus-4-8` with structured outputs (`client.messages.parse` against
   the `LoreDelta` contract), behind the unchanged `Extractor` protocol.
   `pip install -e ".[anthropic]"`; requires `ANTHROPIC_API_KEY`.
-- **Embedder** — `lore_stack_adapters.openai_embedder.OpenAIEmbedder` calls OpenAI
-  `text-embedding-3-small` (1536-d), behind the `Embedder` protocol.
-  `pip install -e ".[embeddings]"`; requires `OPENAI_API_KEY`. Live and fake
-  embeddings coexist in one lore — `semantic_search` gates by the `model` column,
-  so they never cross — and the adapter raises retrieval's noise floor
-  (`semantic_floor`) for its tighter cosine spread. Use the same embedder to ingest
-  and to query.
+- **Embedder (cloud)** — `lore_stack_adapters.openai_embedder.OpenAIEmbedder` calls
+  OpenAI `text-embedding-3-small` (1536-d), behind the `Embedder` protocol.
+  `pip install -e ".[embeddings]"`; requires `OPENAI_API_KEY`.
+- **Embedder (local)** — `lore_stack_adapters.ollama_embedder.OllamaEmbedder` calls
+  a local Ollama server (default `nomic-embed-text`, 768-d), fully offline.
+  `pip install -e ".[ollama]"`; run `ollama serve` with the model pulled (honors
+  `OLLAMA_HOST`). nomic uses different task prefixes for documents vs queries, so the
+  adapter applies `search_document:` in `embed()` and exposes `embed_query()`
+  (`search_query:`); retrieval calls the latter when present.
+
+Live and fake embeddings coexist in one lore — `semantic_search` gates by the
+`model` column, so they never cross — and each live adapter sets its own
+`semantic_floor` (OpenAI 0.30; nomic 0.55, since nomic's baseline cosine runs high).
+Use the same embedder to ingest and to query.
 
 Parity tests (`tests/test_phase2_parity.py`, `tests/test_embedder_parity.py`,
 marker `model`) exercise the live paths and assert DB-shape + invariants; they are

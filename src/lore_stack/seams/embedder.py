@@ -26,6 +26,13 @@ _STOPWORDS = STOPWORDS  # backward-compatible alias
 class Embedder(Protocol):
     def embed(self, texts: list[str]) -> list[list[float]]: ...
 
+    # Optional: an embedder whose query and document encodings differ (e.g. a model
+    # trained with task prefixes like nomic-embed-text) may also define
+    #   embed_query(texts) -> list[list[float]]
+    # Retrieval calls embed_query for the query side when present; embed() is the
+    # document side (ingest + dedup). Symmetric embedders omit it -- callers fall
+    # back to embed(), so existing adapters need no change.
+
 
 class FakeEmbedder:
     model_name = "fake-hash-256"

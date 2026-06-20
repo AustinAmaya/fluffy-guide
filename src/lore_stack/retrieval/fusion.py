@@ -103,7 +103,12 @@ def gather_candidates(
     fts_scores = dict(fts_search(conn, query))
     cosine_scores: dict[str, float] = {}
     if embedder is not None:
-        qvec = embedder.embed([query])[0]
+        # Some embedders (e.g. nomic-embed-text) use a different task prefix for a
+        # query than for a stored document; they expose embed_query() for the query
+        # side. Embedders without it (fake, OpenAI) are symmetric -> fall back to
+        # embed(), so their behavior and the golden output are unchanged.
+        embed_query = getattr(embedder, "embed_query", embedder.embed)
+        qvec = embed_query([query])[0]
         cosine_scores = dict(
             semantic_search(conn, qvec, model=getattr(embedder, "model_name", "unknown"))
         )
