@@ -3,6 +3,7 @@ the visualizer and the Hermes skill stub are thin shells over the same library."
 import argparse
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -22,10 +23,24 @@ from lore_stack.writeback import (
 )
 
 
+def _db(args):
+    """Resolve the lore DB path: --db, else $LORE_STACK_DB. Returns None (after
+    printing why) if neither is set, so the caller can return a non-zero exit code
+    -- mirrors _embedder's contract."""
+    db = getattr(args, "db", None) or os.environ.get("LORE_STACK_DB")
+    if not db:
+        print("no database: pass --db or set LORE_STACK_DB", file=sys.stderr)
+        return None
+    return db
+
+
 def _cmd_init_db(args) -> int:
-    conn = connect(args.db)
+    db = _db(args)
+    if db is None:
+        return 1
+    conn = connect(db)
     applied = init_db(conn)
-    print(f"initialized {args.db} (migrations applied: {applied or 'none, already current'})")
+    print(f"initialized {db} (migrations applied: {applied or 'none, already current'})")
     return 0
 
 
@@ -58,7 +73,10 @@ def _embedder(args):
 
 
 def _cmd_ingest_delta(args) -> int:
-    conn = connect(args.db, auto_snapshot=True)
+    db = _db(args)
+    if db is None:
+        return 1
+    conn = connect(db, auto_snapshot=True)
     try:
         delta = _load_delta(args.file)
     except Exception as exc:
@@ -81,7 +99,10 @@ def _cmd_ingest_delta(args) -> int:
 def _cmd_stage_delta(args) -> int:
     from lore_stack import staging
 
-    conn = connect(args.db)
+    db = _db(args)
+    if db is None:
+        return 1
+    conn = connect(db)
     try:
         delta = _load_delta(args.file)
     except Exception as exc:
@@ -135,10 +156,13 @@ def _cmd_stage(args) -> int:
     if args.action in ("show", "apply", "discard") and not args.id:
         print(f"stage {args.action} requires --id", file=sys.stderr)
         return 1
+    db = _db(args)
+    if db is None:
+        return 1
     if args.action == "apply":
-        conn = connect(args.db, auto_snapshot=True)
+        conn = connect(db, auto_snapshot=True)
     else:
-        conn = connect(args.db)
+        conn = connect(db)
 
     if args.action == "list":
         rows = staging.list_staged(conn, status=args.status)
@@ -181,7 +205,10 @@ def _cmd_stage(args) -> int:
 
 
 def _cmd_compile_context(args) -> int:
-    conn = connect(args.db)
+    db = _db(args)
+    if db is None:
+        return 1
+    conn = connect(db)
     embedder = _embedder(args)
     if embedder is None:
         return 1
@@ -415,16 +442,101 @@ def _cmd_lores(args) -> int:
     return 0
 
 
+def _copy_traversable(src, dest: Path) -> None:
+    """Recursively copy an importlib.resources Traversable tree to a real path.
+    Uses the Traversable protocol (iterdir/is_dir/read_bytes) so it works whether
+    the package is installed editable (real files) or zipped."""
+    dest.mkdir(parents=True, exist_ok=True)
+    for child in src.iterdir():
+        target = dest / child.name
+        if child.is_dir():
+            _copy_traversable(child, target)
+        else:
+            target.write_bytes(child.read_bytes())
+
+
+def _skill_name(src, fallback: str) -> str:
+    """Read the `name:` from a skill's packaged SKILL.md (the Hermes skill id)."""
+    for line in (src / "SKILL.md").read_text(encoding="utf-8").splitlines():
+        if line.startswith("name:"):
+            return line.split(":", 1)[1].strip()
+    return fallback
+
+
+def _cmd_init_hermes(args) -> int:
+    """One-command install of the lore skills + .env + a bare lore into a Hermes
+    home. Idempotent and non-destructive: existing skill dirs are backed up to
+    `<name>.bak` (unless --force), init-db only ensures the schema, and config.yaml
+    is never touched (Hermes auto-discovers skills from skills/)."""
+    from importlib import resources
+
+    home = Path(args.home)
+    skills_dir = home / "skills"
+    skills_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Copy the packaged skills into <home>/skills/<name>/ (named by SKILL.md).
+    hermes = resources.files("lore_stack") / "hermes"
+    installed = []
+    for src_dir, fallback in (("extraction", "lore-extract"), ("storage", "lore-memory")):
+        src = hermes / src_dir
+        name = _skill_name(src, fallback)
+        dest = skills_dir / name
+        if dest.exists():
+            if args.force:
+                shutil.rmtree(dest)
+            else:
+                bak = skills_dir / f"{name}.bak"
+                if bak.exists():
+                    shutil.rmtree(bak)
+                dest.rename(bak)
+        _copy_traversable(src, dest)
+        installed.append(name)
+
+    # 2. Resolve config values.
+    python = args.python or sys.executable
+    embedder = args.embedder or "fake"
+    db_path = Path(args.db) if args.db else home / "local" / "lore.db"
+
+    def _posix(p) -> str:
+        return str(Path(p)).replace("\\", "/")  # forward slashes: dotenv-safe on Windows
+
+    # 3. Write <home>/.env (no YAML dep; don't clobber config.yaml).
+    env_path = home / ".env"
+    env_path.write_text(
+        f"LORE_STACK_PYTHON={_posix(python)}\n"
+        f"LORE_STACK_EMBEDDER={embedder}\n"
+        f"LORE_STACK_DB={_posix(db_path)}\n",
+        encoding="utf-8",
+    )
+
+    # 4. init-db at the db path (bare lore; idempotent if it already exists).
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = connect(db_path)
+    applied = init_db(conn)
+    conn.close()
+
+    # 5. Summary + the one manual step.
+    print(f"init-hermes: wired {home}")
+    print(f"  skills: {', '.join(installed)}  ->  {skills_dir}")
+    print(f"  .env:   {env_path}  (PYTHON / EMBEDDER={embedder} / DB)")
+    print(f"  lore:   {db_path}  (bare; migrations: {applied or 'already current'})")
+    print()
+    print("Manual step: in the Hermes profile, pin the 'lore-extract' skill to a")
+    print("capable model (it produces the structured LoreDelta JSON); 'lore-memory'")
+    print("needs no reasoning. Skills load from skills/ automatically.")
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="lore-stack", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("init-db", help="create the schema from empty in one command")
-    p.add_argument("--db", required=True)
+    p.add_argument("--db", default=None, help="lore db path (default: $LORE_STACK_DB)")
     p.set_defaults(func=_cmd_init_db)
 
     p = sub.add_parser("ingest-delta", help="validate and write back a LoreDelta JSON file")
-    p.add_argument("--db", required=True)
+    p.add_argument("--db", default=None, help="lore db path (default: $LORE_STACK_DB)")
     p.add_argument("--file", required=True)
     p.add_argument("--story-text", default=None, help="optional story text file")
     p.add_argument("--canon", action="store_true",
@@ -434,7 +546,7 @@ def main(argv=None) -> int:
     p.set_defaults(func=_cmd_ingest_delta)
 
     p = sub.add_parser("stage-delta", help="stage a pre-made LoreDelta JSON for review (writes nothing yet)")
-    p.add_argument("--db", required=True)
+    p.add_argument("--db", default=None, help="lore db path (default: $LORE_STACK_DB)")
     p.add_argument("--file", required=True)
     p.add_argument("--story-text", default=None, help="optional story text file")
     p.set_defaults(func=_cmd_stage_delta)
@@ -455,7 +567,7 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("stage", help="review queue: list/show/apply/discard staged proposals")
     p.add_argument("action", choices=["list", "show", "apply", "discard"])
-    p.add_argument("--db", required=True)
+    p.add_argument("--db", default=None, help="lore db path (default: $LORE_STACK_DB)")
     p.add_argument("--id", default=None, help="staging id for show/apply/discard")
     p.add_argument("--status", default="pending", choices=["pending", "applied", "discarded"])
     p.add_argument("--selection", default=None,
@@ -465,7 +577,7 @@ def main(argv=None) -> int:
     p.set_defaults(func=_cmd_stage)
 
     p = sub.add_parser("compile-context", help="compile a bounded context block for a query")
-    p.add_argument("--db", required=True)
+    p.add_argument("--db", default=None, help="lore db path (default: $LORE_STACK_DB)")
     p.add_argument("--query", required=True)
     p.add_argument("--budget", type=int, default=DEFAULT_TOTAL_BUDGET)
     p.add_argument("--out", default=None)
@@ -519,6 +631,18 @@ def main(argv=None) -> int:
     p.add_argument("--from", dest="from_name", default=None, help="source lore for copy")
     p.add_argument("--to", dest="to_name", default=None, help="destination lore for copy")
     p.set_defaults(func=_cmd_lores)
+
+    p = sub.add_parser("init-hermes",
+                       help="one-command install: copy the lore skills + write .env + init a bare lore into a Hermes home")
+    p.add_argument("--home", required=True, help="the Hermes HERMES_HOME to wire")
+    p.add_argument("--db", default=None, help="lore db path (default: <home>/local/lore.db)")
+    p.add_argument("--embedder", choices=["fake", "openai", "ollama"], default=None,
+                   help="embedder written to .env as LORE_STACK_EMBEDDER (default: fake)")
+    p.add_argument("--python", default=None,
+                   help="python that has lore-stack installed (default: this interpreter)")
+    p.add_argument("--force", action="store_true",
+                   help="overwrite existing skill dirs in place instead of backing them up to .bak")
+    p.set_defaults(func=_cmd_init_hermes)
 
     p = sub.add_parser("snapshot", help="manage point-in-time snapshots of a lore")
     p.add_argument("action", choices=["create", "list", "rollback"])

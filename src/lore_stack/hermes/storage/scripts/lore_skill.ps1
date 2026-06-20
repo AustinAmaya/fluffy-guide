@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory = $true)]
     [ValidateSet('init-db', 'ingest-delta', 'stage-delta', 'compile-context')]
     [string]$Command,
-    [Parameter(Mandatory = $true)][string]$DbPath,
+    [string]$DbPath,
     [string]$Query,
     [string]$File,
     [string]$Out,
@@ -12,13 +12,15 @@ param(
 )
 $py = if ($env:LORE_STACK_PYTHON) { $env:LORE_STACK_PYTHON } else { 'python' }
 $emb = if ($Embedder) { @('--embedder', $Embedder) } else { @() }
+# -DbPath optional: when omitted the CLI falls back to $LORE_STACK_DB.
+$db = if ($DbPath) { @('--db', $DbPath) } else { @() }
 switch ($Command) {
-    'init-db'         { & $py -m lore_stack.cli init-db --db $DbPath }
+    'init-db'         { & $py -m lore_stack.cli init-db @db }
     'ingest-delta'    {
         $canonArg = if ($Canon) { @('--canon') } else { @() }
-        & $py -m lore_stack.cli ingest-delta --db $DbPath --file $File @canonArg @emb
+        & $py -m lore_stack.cli ingest-delta @db --file $File @canonArg @emb
     }
-    'stage-delta'     { & $py -m lore_stack.cli stage-delta --db $DbPath --file $File }
-    'compile-context' { & $py -m lore_stack.cli compile-context --db $DbPath --query $Query --out $Out @emb }
+    'stage-delta'     { & $py -m lore_stack.cli stage-delta @db --file $File }
+    'compile-context' { & $py -m lore_stack.cli compile-context @db --query $Query --out $Out @emb }
 }
 exit $LASTEXITCODE
