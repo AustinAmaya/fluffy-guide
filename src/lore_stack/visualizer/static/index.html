@@ -4,33 +4,49 @@
 <meta charset="utf-8">
 <title>lore-stack visualizer</title>
 <style>
-  :root { --bg:#14161c; --panel:#1d2027; --line:#2c313c; --fg:#d8dce6; --dim:#8b93a5;
-          --canon:#5fb878; --soft:#c9a93f; --motif:#b06fd4; --dep:#5b6172; --bad:#d46a6a; }
+  /* "observatory at night": ink ground, warm-ivory paper text, one lantern accent. */
+  :root { --bg:#0f1117; --panel:#171a22; --panel2:#1b1f29; --line:#262b36;
+          --fg:#e8e4d8; --dim:#8a91a3; --accent:#e0a64e; --accent-soft:#3a2f1a;
+          --canon:#5fb878; --soft:#c9a93f; --motif:#b06fd4; --dep:#5b6172; --bad:#d46a6a;
+          --serif: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+          --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
   * { box-sizing: border-box; }
-  body { margin:0; font:13px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--fg);
-         display:grid; grid-template-columns: 1fr minmax(280px, 30%); grid-template-rows: 44px 1fr; height:100vh; }
-  header { grid-column:1/3; display:flex; align-items:center; gap:12px; padding:0 14px;
-           border-bottom:1px solid var(--line); }
-  header h1 { font-size:14px; margin:0 12px 0 0; color:var(--fg); }
-  header input { flex:1; max-width:480px; background:var(--panel); color:var(--fg);
-                 border:1px solid var(--line); border-radius:4px; padding:6px 8px; }
-  header button, .panel button { background:#2a3140; color:var(--fg); border:1px solid var(--line);
-                 border-radius:4px; padding:6px 10px; cursor:pointer; }
-  header button:hover, .panel button:hover { background:#39435a; }
+  body { margin:0; font:13px/1.45 system-ui, -apple-system, sans-serif; background:var(--bg); color:var(--fg);
+         display:grid; grid-template-columns: 1fr minmax(300px, 33%); grid-template-rows: 46px 1fr; height:100vh; }
+  header { grid-column:1/3; display:flex; align-items:center; gap:10px; padding:0 16px;
+           border-bottom:1px solid var(--line); background:linear-gradient(180deg, var(--panel), var(--bg)); }
+  header h1 { font:600 15px/1 var(--serif); letter-spacing:.02em; margin:0 12px 0 0; color:var(--fg); }
+  header input { flex:1; max-width:420px; background:var(--panel); color:var(--fg);
+                 border:1px solid var(--line); border-radius:5px; padding:6px 9px; }
+  button, select { background:#222836; color:var(--fg); border:1px solid var(--line);
+           border-radius:5px; padding:6px 10px; cursor:pointer; font-size:12px; }
+  button:hover { background:#2c3343; }
+  button.primary { background:var(--accent); color:#1a1408; border-color:var(--accent); font-weight:600; }
+  button.primary:hover { background:#eab863; }
+  button:focus-visible, input:focus-visible, .chip:focus-visible, [role=slider]:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
   #graph { position:relative; overflow:hidden; }
-  svg { width:100%; height:100%; display:block; cursor:grab; }
-  svg.panning { cursor:grabbing; }
-  #graphControls { position:absolute; top:8px; left:8px; display:flex; gap:6px; z-index:2; }
-  #graphControls button { background:var(--panel); color:var(--fg); border:1px solid var(--line);
-                          border-radius:4px; padding:3px 8px; cursor:pointer; font-size:12px; }
-  #graphControls button:hover { background:#39435a; }
-  #graphHint { position:absolute; bottom:8px; left:8px; color:var(--dim); font-size:11px;
-               pointer-events:none; }
+  #cy { position:absolute; inset:0; }
+  #graphbar { position:absolute; top:10px; left:10px; right:10px; z-index:4; display:flex; gap:8px;
+              align-items:center; flex-wrap:wrap; background:rgba(15,17,23,.82); backdrop-filter:blur(6px);
+              border:1px solid var(--line); border-radius:9px; padding:7px 10px; }
+  #graphbar input[type=search] { background:var(--panel); color:var(--fg); border:1px solid var(--line);
+              border-radius:5px; padding:5px 8px; width:170px; }
+  .chips { display:flex; gap:5px; flex-wrap:wrap; }
+  .chip { font-size:11px; padding:2px 8px; border-radius:11px; border:1px solid var(--line);
+          cursor:pointer; user-select:none; display:inline-flex; gap:5px; align-items:center; background:var(--panel); }
+  .chip.off { opacity:.35; }
+  .chip .dot { width:8px; height:8px; border-radius:50%; }
+  .strength { display:flex; align-items:center; gap:7px; font-size:11px; color:var(--dim); margin-left:auto; }
+  .strength input[type=range] { accent-color:var(--accent); width:130px; }
+  .strength b { color:var(--fg); font-variant-numeric:tabular-nums; }
+  #graphControls { position:absolute; bottom:10px; left:10px; display:flex; gap:6px; z-index:4; }
+  #graphControls button { background:rgba(15,17,23,.82); }
+  #graphHint { position:absolute; bottom:10px; right:12px; color:var(--dim); font-size:11px; pointer-events:none; }
   aside { border-left:1px solid var(--line); overflow-y:auto; overflow-x:hidden; padding:12px;
           min-width:0; overflow-wrap:anywhere; }
-  .panel { background:var(--panel); border:1px solid var(--line); border-radius:6px;
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px;
            padding:10px 12px; margin-bottom:12px; }
-  .panel h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim);
+  .panel h2 { font:600 11px/1.2 system-ui; text-transform:uppercase; letter-spacing:.08em; color:var(--dim);
               margin:0 0 8px; }
   .fact { padding:4px 0; border-bottom:1px dashed var(--line); display:flex; gap:6px;
           align-items:baseline; flex-wrap:wrap; }
@@ -39,24 +55,29 @@
   .badge.canonical { background:var(--canon); } .badge.soft { background:var(--soft); }
   .badge.motif { background:var(--motif); } .badge.deprecated { background:var(--dep); color:#cfd3dd; }
   .dim { color:var(--dim); } .small { font-size:11px; }
-  pre { white-space:pre-wrap; background:#10131a; padding:8px; border-radius:4px;
+  pre, .mono { font-family:var(--mono); }
+  pre { white-space:pre-wrap; background:#0b0d12; padding:8px; border-radius:5px;
         max-height:300px; overflow-y:auto; font-size:12px; }
-  .node-label { fill:var(--fg); font-size:11px; pointer-events:none; }
-  .edge-label { fill:var(--dim); font-size:9px; pointer-events:none; }
-  line.edge { stroke:#3a4150; stroke-width:1.2; }
   .editrow { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
-  .editrow input { flex:1 1 90px; min-width:0; background:#10131a; color:var(--fg);
-                   border:1px solid var(--line); border-radius:4px; padding:4px 6px; }
-  .editrow button { flex:0 1 auto; }
+  .editrow input { flex:1 1 90px; min-width:0; background:#0b0d12; color:var(--fg);
+                   border:1px solid var(--line); border-radius:5px; padding:4px 6px; }
   .danger { color:var(--bad); }
   details summary { cursor:pointer; color:var(--dim); }
+  .issue { border:1px solid var(--line); border-radius:8px; padding:10px; margin-top:8px; background:var(--panel2); }
+  .sides { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
+  .side { border:1px solid var(--line); border-radius:7px; padding:8px; background:var(--bg); }
+  .side h3 { margin:0 0 4px; font:600 11px/1.2 system-ui; letter-spacing:.04em; color:var(--dim); }
+  .side .val { font:600 13px/1.3 var(--serif); color:var(--fg); }
+  .snippet { font-family:var(--mono); font-size:11px; color:var(--dim); border-left:2px solid var(--accent-soft);
+             padding:3px 0 3px 8px; margin-top:6px; }
+  .snippet .date { color:var(--accent); }
+  @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
 </style>
 </head>
 <body>
 <header>
   <h1>lore-stack</h1>
-  <select id="loreSel" style="display:none; background:var(--panel); color:var(--fg);
-          border:1px solid var(--line); border-radius:4px; padding:6px 8px;"></select>
+  <select id="loreSel" style="display:none"></select>
   <button id="newLoreBtn" style="display:none">+ lore</button>
   <button id="copyLoreBtn" style="display:none">copy lore</button>
   <button id="resetLoreBtn" style="display:none" title="Discard all changes and history; restore the pristine frozen version">reset to frozen</button>
@@ -65,14 +86,23 @@
   <button id="exportBtn">Export JSON</button>
 </header>
 <div id="graph">
+  <div id="cy"></div>
+  <div id="graphbar">
+    <input id="search" type="search" placeholder="search entities…" aria-label="Search entities">
+    <span class="chip" id="statusChip" title="Toggle: hide one-off, unconnected entities">connected only</span>
+    <span class="chips" id="kindChips"></span>
+    <span class="strength" title="Keep only entities corroborated by at least N stories — slide right for the core of the lore">
+      strength <input id="strength" type="range" min="1" max="8" step="1" value="1" aria-label="Minimum story support">
+      <b id="strengthVal">≥1</b>
+    </span>
+  </div>
   <div id="graphControls">
-    <button id="homeBtn" title="Deselect any node and return to the home view">&#8962; home</button>
+    <button id="homeBtn" title="Deselect and fit the whole graph">&#8962; home</button>
     <button id="zoomIn" title="Zoom in">+</button>
     <button id="zoomOut" title="Zoom out">&minus;</button>
-    <button id="resetView" title="Reset view">reset view</button>
+    <button id="resetView" title="Fit graph to view">fit</button>
   </div>
-  <svg id="svg"></svg>
-  <div id="graphHint">drag to pan &middot; scroll to zoom</div>
+  <div id="graphHint">drag to pan &middot; scroll to zoom &middot; click a node to focus its neighborhood</div>
 </div>
 <aside>
   <div class="panel" id="inbox" style="display:none"><h2>Review inbox</h2></div>
@@ -84,7 +114,13 @@
   <div class="panel" id="motifs"><h2>Motifs (never canon)</h2><div class="dim">none</div></div>
   <div class="panel" id="history"><h2>History</h2><div class="dim">none</div></div>
 </aside>
+<script src="/static/vendor/cytoscape.min.js"></script>
+<script src="/static/vendor/layout-base.js"></script>
+<script src="/static/vendor/cose-base.js"></script>
+<script src="/static/vendor/cytoscape-fcose.js"></script>
 <script>
+if (window.cytoscape && window.cytoscapeFcose) cytoscape.use(window.cytoscapeFcose);
+
 let HOME_MODE = false, LORE = null;
 const withLore = p => (!HOME_MODE || !LORE) ? p
   : p + (p.includes("?") ? "&" : "?") + "lore=" + encodeURIComponent(LORE);
@@ -149,9 +185,15 @@ async function initLores(){
 }
 const KIND_COLOR = {character:"#6f9ceb", location:"#5fb878", item:"#c9a93f",
                     organization:"#d4836f", event:"#b06fd4", concept:"#7fc7c7"};
-let G = {entities:[], edges:[]}, sim = null;
+let G = {entities:[], edges:[]};
 
 function esc(s){ const d=document.createElement("div"); d.textContent=String(s??""); return d.innerHTML; }
+function nameOf(idOrLit){
+  if (idOrLit == null) return "?";
+  const e = G.entities.find(x => x.entity_id === idOrLit);
+  return e ? e.display_name : idOrLit;   // entity id -> name; a literal falls through unchanged
+}
+function dateOf(storyId){ const m = /^(\d{4}-\d{2}-\d{2})/.exec(storyId || ""); return m ? m[1] : null; }
 
 async function loadGraph(){
   if (HOME_MODE && !LORE) {
@@ -160,135 +202,121 @@ async function loadGraph(){
     return;
   }
   G = await api("/api/graph");
-  drawGraph();
+  renderGraph();
   loadPanels();
 }
 
-const NS_SVG = "http://www.w3.org/2000/svg";
-let view = {tx: 0, ty: 0, scale: 1};
-let viewport = null;
+/* ---------- Cytoscape graph ---------- */
+let cy = null;
+const FILTERS = { q:"", connectedOnly:true, kinds:new Set(Object.keys(KIND_COLOR)), minStories:1 };
 
-function applyView(){
-  if (viewport) viewport.setAttribute("transform",
-    `translate(${view.tx} ${view.ty}) scale(${view.scale})`);
-}
-function resetView(){ view = {tx: 0, ty: 0, scale: 1}; applyView(); }
-
-function setupPanZoom(){
-  const svg = document.getElementById("svg");
-  let panning = false, moved = false, sx = 0, sy = 0;
-  svg.addEventListener("mousedown", e => {
-    panning = true; moved = false; sx = e.clientX; sy = e.clientY;
-    svg.classList.add("panning");
-  });
-  window.addEventListener("mousemove", e => {
-    if (!panning) return;
-    const dx = e.clientX - sx, dy = e.clientY - sy;
-    if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
-    view.tx += dx; view.ty += dy; sx = e.clientX; sy = e.clientY; applyView();
-  });
-  window.addEventListener("mouseup", () => { panning = false; svg.classList.remove("panning"); });
-  // Suppress the node click that would otherwise fire at the end of a drag.
-  svg.addEventListener("click", e => { if (moved) { e.stopPropagation(); moved = false; } }, true);
-  // A plain click on empty graph background (not a node, not a drag) deselects.
-  svg.addEventListener("click", e => {
-    if (e.target === svg || e.target.id === "viewport") exitToHome();
-  });
-  svg.addEventListener("wheel", e => {
-    e.preventDefault();
-    const rect = svg.getBoundingClientRect();
-    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    const factor = e.deltaY < 0 ? 1.15 : 1/1.15;
-    const ns = Math.max(0.2, Math.min(5, view.scale * factor));
-    const k = ns / view.scale;
-    // Keep the point under the cursor fixed while zooming.
-    view.tx = mx - (mx - view.tx) * k;
-    view.ty = my - (my - view.ty) * k;
-    view.scale = ns; applyView();
-  }, {passive: false});
-  document.getElementById("homeBtn").onclick = exitToHome;
-  document.getElementById("zoomIn").onclick = () => zoomBy(1.25);
-  document.getElementById("zoomOut").onclick = () => zoomBy(1/1.25);
-  document.getElementById("resetView").onclick = resetView;
-}
-function zoomBy(factor){
-  const svg = document.getElementById("svg");
-  const cx = svg.clientWidth/2, cy = svg.clientHeight/2;
-  const ns = Math.max(0.2, Math.min(5, view.scale * factor));
-  const k = ns / view.scale;
-  view.tx = cx - (cx - view.tx) * k; view.ty = cy - (cy - view.ty) * k;
-  view.scale = ns; applyView();
-}
-
-function drawGraph(){
-  const svg = document.getElementById("svg");
-  const W = svg.clientWidth || 800, H = svg.clientHeight || 600;
-  svg.innerHTML = "";
-  viewport = document.createElementNS(NS_SVG, "g");
-  viewport.setAttribute("id", "viewport");
-  svg.appendChild(viewport);
-  applyView();
-  const nodes = G.entities.map((e,i) => ({...e,
-    x: W/2 + Math.cos(2*Math.PI*i/Math.max(G.entities.length,1)) * Math.min(W,H)/3.2,
-    y: H/2 + Math.sin(2*Math.PI*i/Math.max(G.entities.length,1)) * Math.min(W,H)/3.2,
-    vx:0, vy:0}));
-  const byId = Object.fromEntries(nodes.map(n => [n.entity_id, n]));
-  const edges = G.edges.filter(e => byId[e.subject_entity_id] && byId[e.object_entity_id]);
-
-  // tiny deterministic force layout: a few hundred fixed iterations
-  for (let it=0; it<300; it++){
-    for (const e of edges){
-      const a=byId[e.subject_entity_id], b=byId[e.object_entity_id];
-      const dx=b.x-a.x, dy=b.y-a.y, d=Math.hypot(dx,dy)||1, f=(d-140)*0.01;
-      a.vx+=f*dx/d; a.vy+=f*dy/d; b.vx-=f*dx/d; b.vy-=f*dy/d;
-    }
-    for (const a of nodes) for (const b of nodes){
-      if (a===b) continue;
-      const dx=b.x-a.x, dy=b.y-a.y, d2=dx*dx+dy*dy||1;
-      const f=Math.min(2000/d2, 4); a.vx-=f*dx/Math.sqrt(d2); a.vy-=f*dy/Math.sqrt(d2);
-    }
-    for (const n of nodes){
-      n.vx += (W/2-n.x)*0.002; n.vy += (H/2-n.y)*0.002;
-      n.x += n.vx*0.5; n.y += n.vy*0.5; n.vx*=0.6; n.vy*=0.6;
-      n.x = Math.max(30, Math.min(W-30, n.x)); n.y = Math.max(30, Math.min(H-30, n.y));
+function buildElements(){
+  const els = [];
+  const ids = new Set();
+  for (const e of G.entities){ ids.add(e.entity_id);
+    els.push({ data:{ id:e.entity_id, label:e.display_name, kind:e.kind,
+      status:e.status, sc:(e.story_count||1) } }); }
+  for (const ed of G.edges){
+    if (ids.has(ed.subject_entity_id) && ids.has(ed.object_entity_id)){
+      els.push({ data:{ id:"e_"+ed.fact_id, source:ed.subject_entity_id, target:ed.object_entity_id,
+        label: ed.predicate + (ed.status==="soft" ? " ·" : "") } });
     }
   }
-  const NS = NS_SVG;
-  for (const e of edges){
-    const a=byId[e.subject_entity_id], b=byId[e.object_entity_id];
-    const line = document.createElementNS(NS,"line");
-    line.setAttribute("class","edge");
-    line.setAttribute("x1",a.x); line.setAttribute("y1",a.y);
-    line.setAttribute("x2",b.x); line.setAttribute("y2",b.y);
-    viewport.appendChild(line);
-    const t = document.createElementNS(NS,"text");
-    t.setAttribute("class","edge-label");
-    t.setAttribute("x",(a.x+b.x)/2); t.setAttribute("y",(a.y+b.y)/2 - 4);
-    t.setAttribute("text-anchor","middle");
-    t.textContent = e.predicate + (e.status==="soft" ? " (soft)" : "");
-    viewport.appendChild(t);
-  }
-  for (const n of nodes){
-    const g = document.createElementNS(NS,"g");
-    g.style.cursor = "pointer";
-    g.addEventListener("click", () => showEntity(n.entity_id));
-    const c = document.createElementNS(NS,"circle");
-    c.setAttribute("cx",n.x); c.setAttribute("cy",n.y);
-    c.setAttribute("r", n.status==="canonical" ? 14 : 11);
-    c.setAttribute("fill", KIND_COLOR[n.kind] || "#888");
-    c.setAttribute("stroke", n.status==="canonical" ? "#fff" : "#555");
-    c.setAttribute("stroke-width", n.status==="canonical" ? 2 : 1);
-    if (n.status==="provisional") c.setAttribute("stroke-dasharray","3,2");
-    g.appendChild(c);
-    const t = document.createElementNS(NS,"text");
-    t.setAttribute("class","node-label");
-    t.setAttribute("x",n.x); t.setAttribute("y",n.y+26); t.setAttribute("text-anchor","middle");
-    t.textContent = n.display_name;
-    g.appendChild(t);
-    viewport.appendChild(g);
-  }
+  return els;
 }
 
+function renderGraph(){
+  if (cy){ cy.destroy(); cy = null; }
+  cy = cytoscape({
+    container: document.getElementById("cy"),
+    elements: buildElements(),
+    wheelSensitivity: 0.25,
+    style: [
+      { selector:"node", style:{
+        "background-color": ele => KIND_COLOR[ele.data("kind")] || "#888",
+        "label":"data(label)", "color":"#cfd3dd", "font-size":9,
+        "text-valign":"bottom", "text-margin-y":3, "min-zoomed-font-size":9,
+        "text-background-color":"#0f1117", "text-background-opacity":0.6, "text-background-padding":1,
+        "width": ele => 10 + Math.min(20, (ele.data("sc")||1)*2.2),
+        "height": ele => 10 + Math.min(20, (ele.data("sc")||1)*2.2),
+        "border-width": ele => ele.data("status")==="canonical" ? 2 : 1,
+        "border-color": ele => ele.data("status")==="canonical" ? "#e8e4d8" : "#3a4150",
+        "border-style": ele => ele.data("status")==="provisional" ? "dashed" : "solid" } },
+      { selector:"edge", style:{
+        "width":1, "line-color":"#2e3442", "target-arrow-color":"#2e3442",
+        "target-arrow-shape":"triangle", "arrow-scale":0.7, "curve-style":"bezier",
+        "label":"data(label)", "font-size":7, "color":"#5e6678",
+        "text-rotation":"autorotate", "min-zoomed-font-size":11 } },
+      { selector:".faded", style:{ "opacity":0.07, "text-opacity":0 } },
+      { selector:".hidden", style:{ "display":"none" } },
+      { selector:"node.hi", style:{ "border-color":"#e0a64e", "border-width":3 } },
+      { selector:"edge.hi", style:{ "line-color":"#e0a64e", "target-arrow-color":"#e0a64e",
+        "width":2, "color":"#e0a64e", "text-opacity":1 } } ],
+    layout: { name:"fcose", quality:"default", animate:false, randomize:true,
+              nodeSeparation:80, idealEdgeLength:75, nodeRepulsion:6500 },
+  });
+  cy.on("tap", "node", ev => { const id = ev.target.id(); highlight(id); showEntity(id); });
+  cy.on("tap", ev => { if (ev.target === cy){ clearHighlight(); exitToHome(); } });
+  applyFilters();
+}
+
+function applyFilters(){
+  if (!cy) return;
+  const f = FILTERS;
+  cy.batch(() => {
+    cy.nodes().forEach(n => {
+      const d = n.data();
+      let show = f.kinds.has(d.kind) && (d.sc||1) >= f.minStories;
+      if (show && f.connectedOnly) show = d.status==="canonical" || n.degree(false) > 0;
+      if (show && f.q) show = (d.label||"").toLowerCase().includes(f.q);
+      n.toggleClass("hidden", !show);
+    });
+    cy.edges().forEach(e =>
+      e.toggleClass("hidden", e.source().hasClass("hidden") || e.target().hasClass("hidden")));
+  });
+}
+
+function highlight(id){
+  if (!cy) return;
+  const n = cy.getElementById(id);
+  if (!n || n.empty()) return;
+  cy.elements().removeClass("hi").addClass("faded");
+  n.closedNeighborhood().removeClass("faded");
+  n.addClass("hi"); n.connectedEdges().addClass("hi");
+}
+function clearHighlight(){ if (cy) cy.elements().removeClass("faded hi"); }
+
+function setupControls(){
+  // kind chips
+  const chips = document.getElementById("kindChips");
+  chips.innerHTML = Object.entries(KIND_COLOR).map(([k,c]) =>
+    `<span class="chip" data-kind="${k}" tabindex="0"><span class="dot" style="background:${c}"></span>${k}</span>`).join("");
+  chips.querySelectorAll(".chip").forEach(ch => {
+    const toggle = () => { const k = ch.dataset.kind;
+      if (FILTERS.kinds.has(k)){ FILTERS.kinds.delete(k); ch.classList.add("off"); }
+      else { FILTERS.kinds.add(k); ch.classList.remove("off"); }
+      applyFilters(); };
+    ch.onclick = toggle;
+    ch.onkeydown = e => { if (e.key==="Enter"||e.key===" "){ e.preventDefault(); toggle(); } };
+  });
+  const statusChip = document.getElementById("statusChip");
+  statusChip.onclick = () => { FILTERS.connectedOnly = !FILTERS.connectedOnly;
+    statusChip.classList.toggle("off", !FILTERS.connectedOnly);
+    statusChip.textContent = FILTERS.connectedOnly ? "connected only" : "show all";
+    applyFilters(); };
+  const search = document.getElementById("search");
+  search.oninput = () => { FILTERS.q = search.value.trim().toLowerCase(); applyFilters();
+    if (cy && FILTERS.q){ const vis = cy.nodes(":visible"); if (vis.length) cy.fit(vis, 40); } };
+  const slider = document.getElementById("strength"), out = document.getElementById("strengthVal");
+  slider.oninput = () => { FILTERS.minStories = +slider.value; out.textContent = "≥" + slider.value;
+    applyFilters(); };
+  document.getElementById("homeBtn").onclick = () => { clearHighlight(); exitToHome(); if (cy) cy.fit(cy.nodes(":visible"), 40); };
+  document.getElementById("zoomIn").onclick = () => cy && cy.zoom({level: cy.zoom()*1.3, renderedPosition:{x:cy.width()/2,y:cy.height()/2}});
+  document.getElementById("zoomOut").onclick = () => cy && cy.zoom({level: cy.zoom()/1.3, renderedPosition:{x:cy.width()/2,y:cy.height()/2}});
+  document.getElementById("resetView").onclick = () => cy && cy.fit(cy.nodes(":visible"), 40);
+}
+
+/* ---------- detail + panels ---------- */
 function factRow(f, withActions){
   const obj = f.object_literal ?? f.object_entity_id ?? "";
   const prov = f.provenance
@@ -309,7 +337,6 @@ const HOME_DETAIL = '<h2>Home</h2><div class="dim">No node selected. Click a nod
   + ' review inbox, and history.</div>';
 
 function exitToHome(){
-  // If a snapshot preview is showing, return to the live graph first.
   if (typeof previewingSeq !== "undefined" && previewingSeq !== null) exitPreview();
   document.getElementById("detail").innerHTML = HOME_DETAIL;
 }
@@ -321,7 +348,7 @@ async function showEntity(entityId){
   const history = facts.filter(f => f.status === "deprecated");
   document.getElementById("detail").innerHTML = `
     <h2>Entity <button class="small" style="float:right" onclick="exitToHome()">&#8962; home</button></h2>
-    <div><b>${esc(ent.display_name)}</b> <span class="dim">(${esc(ent.kind||"")}, ${esc(ent.status||"")})</span></div>
+    <div><b>${esc(ent.display_name)}</b> <span class="dim">(${esc(ent.kind||"")}, ${esc(ent.status||"")}${ent.story_count?`, ${ent.story_count} stories`:""})</span></div>
     <div class="small dim">${esc(ent.summary||"")}</div>
     <div class="small dim">aliases: ${esc((ent.aliases||[]).join(", "))}</div>
     <div style="margin-top:8px">${active.map(f => factRow(f, true)).join("") || '<span class="dim">no facts</span>'}</div>
@@ -375,8 +402,6 @@ async function reviewStage(sid){
     `<div style="margin-top:8px"><b class="small">${key} (${items.length})</b>` +
     items.map((it, i) => `<label class="fact small" style="gap:6px">
       <input type="checkbox" checked data-key="${key}" data-i="${i}"> ${render(it)}</label>`).join("") + "</div>";
-  // Claims sorted by confidence (advisory) but checkbox index must map to the
-  // original delta order, so we annotate each with its true index.
   const claimItems = d.claims.map((c, i) => ({c, i}))
     .sort((a, b) => (b.c.confidence||0) - (a.c.confidence||0));
   document.getElementById("detail").innerHTML = `
@@ -423,29 +448,31 @@ async function loadPanels(){
   const contradictions = conflicts.filter(c =>
     c.item_kind !== "supersession" && c.payload.kind !== "merge_suggestion");
   const merges = conflicts.filter(c => c.payload.kind === "merge_suggestion");
-  const proposedOf = c => c.payload.proposed_object_literal ?? c.payload.proposed_object_entity_id ?? "?";
-  const existingOf = c => c.payload.existing_object_literal ?? c.payload.existing_object_entity_id ?? "?";
+  const proposedOf = c => nameOf(c.payload.proposed_object_entity_id ?? c.payload.proposed_object_literal);
+  const existingOf = c => nameOf(c.payload.existing_object_entity_id ?? c.payload.existing_object_literal);
+  const subjOf = c => nameOf(c.payload.subject_entity_id);
   const keepUse = c => `<div style="margin-top:4px">
       <button class="small" onclick="resolveConflict('${esc(c.item_id)}','keep_existing')">keep "${esc(existingOf(c))}"</button>
-      <button class="small" onclick="resolveConflict('${esc(c.item_id)}','accept_proposed')">use "${esc(proposedOf(c))}"</button>
+      <button class="small primary" onclick="resolveConflict('${esc(c.item_id)}','accept_proposed')">use "${esc(proposedOf(c))}"</button>
     </div>`;
   document.getElementById("conflicts").innerHTML = "<h2>Open conflicts</h2>" +
     '<div class="small dim">A new story contradicted established canon (a permanent fact). Keep what canon holds, or accept the new value (which deprecates the old).</div>' +
     (contradictions.length ? contradictions.map(c => `<div class="fact" style="flex-direction:column; align-items:flex-start">
-        <div class="small"><b>${esc(c.payload.predicate)}</b>: canon says <b>${esc(existingOf(c))}</b>, a story proposed <b>${esc(proposedOf(c))}</b></div>
+        <div class="small"><b>${esc(subjOf(c))}</b> — <b>${esc(c.payload.predicate)}</b>: canon says <b>${esc(existingOf(c))}</b>, a story proposed <b>${esc(proposedOf(c))}</b></div>
         ${keepUse(c)}
       </div>`).join("") : '<div class="dim">none</div>') +
     "<h2 style='margin-top:10px'>Supersessions (something changed)</h2>" +
-    '<div class="small dim">A changeable fact (e.g. where someone lives) got a new value. Accept to update canon — the old value becomes history — or keep the old.</div>' +
-    (supersessions.length ? supersessions.map(c => `<div class="fact" style="flex-direction:column; align-items:flex-start">
-        <div class="small"><b>${esc(c.payload.predicate)}</b>: was <b>${esc(existingOf(c))}</b>, now <b>${esc(proposedOf(c))}</b></div>
+    '<div class="small dim">A changeable fact (e.g. where someone lives) got a new value in a later story. Accept to update canon — the old value becomes history — or keep the old.</div>' +
+    (supersessions.length ? supersessions.map(c => { const d = dateOf(c.payload.story_id);
+      return `<div class="fact" style="flex-direction:column; align-items:flex-start">
+        <div class="small"><b>${esc(subjOf(c))}</b> — <b>${esc(c.payload.predicate)}</b>: was <b>${esc(existingOf(c))}</b>, now <b>${esc(proposedOf(c))}</b>${d ? ` <span class="dim">(new value from the ${esc(d)} story)</span>` : ""}</div>
         ${keepUse(c)}
-      </div>`).join("") : '<div class="dim">none</div>') +
+      </div>`; }).join("") : '<div class="dim">none</div>') +
     "<h2 style='margin-top:10px'>Merge suggestions</h2>" +
     '<div class="small dim">Possible duplicate values. Pick the one to keep; the other becomes history.</div>' +
     (merges.length ? merges.map(c => `
       <div class="fact" style="flex-direction:column; align-items:flex-start">
-        <div class="small dim">${esc(c.payload.predicate)} (cosine ${c.payload.cosine})</div>
+        <div class="small dim"><b>${esc(subjOf(c))}</b> · ${esc(c.payload.predicate)} (cosine ${c.payload.cosine})</div>
         <button class="small" onclick="resolveMerge('${esc(c.item_id)}','${esc(c.payload.fact_a)}')">keep "${esc(c.payload.fact_a_text)}"</button>
         <button class="small" onclick="resolveMerge('${esc(c.item_id)}','${esc(c.payload.fact_b)}')">keep "${esc(c.payload.fact_b_text)}"</button>
       </div>`).join("") : '<div class="dim">none</div>');
@@ -483,13 +510,12 @@ async function previewSnapshot(seq, operation){
     G = await api(`/api/snapshots/${seq}/preview`);
   } catch (e){ alert("Preview failed: " + e.message); return; }
   previewingSeq = seq;
-  drawGraph();
-  // A banner over the graph: this is a read-only past state, with the actions.
+  renderGraph();
   let banner = document.getElementById("previewBanner");
   if (!banner){
     banner = document.createElement("div");
     banner.id = "previewBanner";
-    banner.style.cssText = "position:absolute; top:8px; right:8px; z-index:3; background:var(--panel);"
+    banner.style.cssText = "position:absolute; top:60px; right:10px; z-index:5; background:var(--panel);"
       + " border:1px solid var(--soft); border-radius:6px; padding:8px 10px; max-width:280px;";
     document.getElementById("graph").appendChild(banner);
   }
@@ -562,7 +588,7 @@ document.getElementById("exportBtn").addEventListener("click", async () => {
   a.href = URL.createObjectURL(blob); a.download = "lore-export.json"; a.click();
 });
 
-setupPanZoom();
+setupControls();
 initLores().then(loadGraph);
 </script>
 </body>

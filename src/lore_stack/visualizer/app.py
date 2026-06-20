@@ -107,12 +107,19 @@ def export_subgraph(conn: sqlite3.Connection, entity_slug: str | None = None) ->
             " ORDER BY fact_id",
             (ent["entity_id"],),
         ).fetchall()
+        story_count = conn.execute(
+            "SELECT COUNT(DISTINCT story_id) FROM story_entities WHERE entity_id=?",
+            (ent["entity_id"],),
+        ).fetchone()[0]
         entities.append({
             **dict(ent),
             "aliases": [r["alias"] for r in conn.execute(
                 "SELECT alias FROM entity_aliases WHERE entity_id=? ORDER BY alias_id",
                 (ent["entity_id"],))],
             "facts": [_fact_payload(conn, f) for f in facts],
+            # how many distinct stories corroborate this entity -- the "core" signal the
+            # graph's strength slider thresholds on (recurrence spreads; confidence doesn't).
+            "story_count": story_count,
         })
     edges = [
         dict(r)
