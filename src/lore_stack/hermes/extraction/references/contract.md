@@ -116,9 +116,9 @@ fact about a single entity. These don't count against the closed set.
 
 ## Worked example
 
-Story: *"By dusk, Boxwell — a travelling clockmaker who lodges above the bakery —
-reached the rain-soaked Brambled Inn, where the innkeeper Mirel kept the hallway
-clock that had stopped for twenty years."*
+Source text: *"By dusk, Boxwell — a travelling clockmaker who lodges above the
+bakery — reached the rain-soaked Brambled Inn, where the innkeeper Mirel kept the
+hallway clock that had stopped for twenty years."*
 
 Operator: *"run extraction — get Boxwell, his profession, and where he lives; ignore
 Mirel."*

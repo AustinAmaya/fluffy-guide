@@ -1,54 +1,57 @@
 ---
-name: narrative-lore
-description: Store and retrieve narrative lore in the local lore-stack substrate (deterministic SQLite memory for stories).
-version: 0.3.0
+name: lore-memory
+description: Store and retrieve lore in the local lore-stack substrate (deterministic SQLite world-memory).
+version: 0.4.0
 metadata:
   hermes:
-    tags: [storytelling, lore, sqlite, retrieval]
-    category: writing
+    tags: [lore, memory, sqlite, retrieval]
+    category: knowledge
     requires_toolsets: [terminal]
     config:
-      - key: narrative_lore.db_path
+      - key: lore_memory.db_path
         description: Path to the lore SQLite database
-        default: "~/.hermes/local/lore-stack/data/lore.db"
-        prompt: Narrative lore database path
+        default: "~/.hermes/local/lore.db"
+        prompt: Lore database path
 ---
-# Narrative Lore (storage + retrieval)
+# Lore Memory (store + retrieve)
 
-The **storage half** of the lore loop: a thin shell over the local `lore-stack`
+The **read/write half** of the lore loop: a thin shell over the local `lore-stack`
 CLI. It contains no lore logic — the deterministic substrate is the Python package.
-The **extraction half** (turning a told story into structured lore) is the separate
-`lore-extraction` skill; this skill stores what that produces and retrieves
+The **extraction half** (turning a piece of text into structured lore) is the
+separate `lore-extract` skill; this skill stores what that produces and retrieves
 continuity. Pin this skill to any model; it needs no reasoning.
 
 This skill needs `LORE_STACK_PYTHON` set to the lore-stack venv's Python (else it
 falls back to bare `python`, which won't have the package). Embeddings default to
-`$LORE_STACK_EMBEDDER` (set it to `openai` for live semantic recall; needs
-`OPENAI_API_KEY` and `pip install lore-stack[embeddings]`).
+`$LORE_STACK_EMBEDDER` (set `ollama` for local semantic recall — needs `ollama
+serve` + `nomic-embed-text` — or `openai` for cloud). The db path defaults to
+`$LORE_STACK_DB` when `-DbPath` is omitted.
 
-## Compile continuity context before writing
+## compile-context — the shared read primitive
 
-When the user asks for continuity before a story, compile lore context and return
-the artifact:
+`compile-context` is how **any** consumer reads the world: it returns a bounded,
+lane-based block of the lore relevant to a query. Run it whenever you need
+continuity before producing new text:
 
     powershell -NoProfile -ExecutionPolicy Bypass -File "${HERMES_SKILL_DIR}/scripts/lore_skill.ps1" `
-      -Command compile-context -DbPath "<db_path>" -Query "<user request>" -Out "<artifact path>" -Embedder openai
+      -Command compile-context -DbPath "<db_path>" -Query "<request>" -Out "<artifact path>" -Embedder ollama
 
 (POSIX: `bash "${HERMES_SKILL_DIR}/scripts/lore_skill.sh" compile-context <db> <query> <out>`)
 
 The artifact leads with `=== CONTEXT FOR: <entities> ===` and lane sections
 (Character card, World info, Relationships, Open hooks, Recent continuity). Use the
-same embedder you ingest with (live and fake vectors don't cross).
+same embedder you ingest with (live and fake vectors don't cross). On a bare lore
+it returns cleanly with empty lanes.
 
 ## Store extracted lore (two tiers)
 
-The `lore-extraction` skill produces **two** `LoreDelta` JSON files per run: a
-DIRECT delta (the items the operator named — apply straight to canon) and a STAGE
-delta (the rest — hold for review).
+The `lore-extract` skill produces **two** `LoreDelta` JSON files per run: a DIRECT
+delta (the items the operator named — apply straight to canon) and a STAGE delta
+(the rest — hold for review).
 
 **Direct → canon** (operator-vouched, written canonical immediately):
 
-    powershell ... lore_skill.ps1 -Command ingest-delta -DbPath "<db>" -File "<direct.json>" -Canon -Embedder openai
+    powershell ... lore_skill.ps1 -Command ingest-delta -DbPath "<db>" -File "<direct.json>" -Canon -Embedder ollama
 
 (POSIX: `bash lore_skill.sh ingest-delta <db> <direct.json> canon`)
 
@@ -66,7 +69,7 @@ Downselect staged proposals in the visualizer's inbox (run
     <python> -m lore_stack.cli stage list --db <db>
     <python> -m lore_stack.cli stage show --db <db> --id <stg_id>
     <python> -m lore_stack.cli stage apply --db <db> --id <stg_id> \
-      --selection '{"entities":[0],"claims":[0,2]}' --embedder openai
+      --selection '{"entities":[0],"claims":[0,2]}' --embedder ollama
 
 ## Initialize a fresh database
 
