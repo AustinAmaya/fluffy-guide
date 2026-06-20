@@ -109,7 +109,8 @@
   <div class="panel" id="detail"><h2>Home</h2><div class="dim">No node selected. Click a node in the graph to inspect it, or use the panels below.</div></div>
   <div class="panel" id="context" style="display:none"><h2>Compiled context preview</h2></div>
   <div class="panel" id="retrieval" style="display:none"><h2>Retrieval inspector</h2></div>
-  <div class="panel" id="conflicts"><h2>Open conflicts</h2><div class="dim">none</div></div>
+  <div class="panel" id="conflicts"><h2>Adjudication</h2><div class="dim">none</div></div>
+  <div class="panel" id="prune" style="display:none"><h2>Prune noise</h2></div>
   <div class="panel" id="staleChunks"><h2>Stale chunks</h2><div class="dim">none</div></div>
   <div class="panel" id="motifs"><h2>Motifs (never canon)</h2><div class="dim">none</div></div>
   <div class="panel" id="history"><h2>History</h2><div class="dim">none</div></div>
@@ -204,6 +205,7 @@ async function loadGraph(){
   G = await api("/api/graph");
   renderGraph();
   loadPanels();
+  loadPrune();
 }
 
 /* ---------- Cytoscape graph ---------- */
@@ -455,27 +457,18 @@ async function loadPanels(){
       <button class="small" onclick="resolveConflict('${esc(c.item_id)}','keep_existing')">keep "${esc(existingOf(c))}"</button>
       <button class="small primary" onclick="resolveConflict('${esc(c.item_id)}','accept_proposed')">use "${esc(proposedOf(c))}"</button>
     </div>`;
-  document.getElementById("conflicts").innerHTML = "<h2>Open conflicts</h2>" +
-    '<div class="small dim">A new story contradicted established canon (a permanent fact). Keep what canon holds, or accept the new value (which deprecates the old).</div>' +
-    (contradictions.length ? contradictions.map(c => `<div class="fact" style="flex-direction:column; align-items:flex-start">
-        <div class="small"><b>${esc(subjOf(c))}</b> — <b>${esc(c.payload.predicate)}</b>: canon says <b>${esc(existingOf(c))}</b>, a story proposed <b>${esc(proposedOf(c))}</b></div>
-        ${keepUse(c)}
-      </div>`).join("") : '<div class="dim">none</div>') +
-    "<h2 style='margin-top:10px'>Supersessions (something changed)</h2>" +
-    '<div class="small dim">A changeable fact (e.g. where someone lives) got a new value in a later story. Accept to update canon — the old value becomes history — or keep the old.</div>' +
-    (supersessions.length ? supersessions.map(c => { const d = dateOf(c.payload.story_id);
-      return `<div class="fact" style="flex-direction:column; align-items:flex-start">
-        <div class="small"><b>${esc(subjOf(c))}</b> — <b>${esc(c.payload.predicate)}</b>: was <b>${esc(existingOf(c))}</b>, now <b>${esc(proposedOf(c))}</b>${d ? ` <span class="dim">(new value from the ${esc(d)} story)</span>` : ""}</div>
-        ${keepUse(c)}
-      </div>`; }).join("") : '<div class="dim">none</div>') +
-    "<h2 style='margin-top:10px'>Merge suggestions</h2>" +
-    '<div class="small dim">Possible duplicate values. Pick the one to keep; the other becomes history.</div>' +
-    (merges.length ? merges.map(c => `
-      <div class="fact" style="flex-direction:column; align-items:flex-start">
-        <div class="small dim"><b>${esc(subjOf(c))}</b> · ${esc(c.payload.predicate)} (cosine ${c.payload.cosine})</div>
-        <button class="small" onclick="resolveMerge('${esc(c.item_id)}','${esc(c.payload.fact_a)}')">keep "${esc(c.payload.fact_a_text)}"</button>
-        <button class="small" onclick="resolveMerge('${esc(c.item_id)}','${esc(c.payload.fact_b)}')">keep "${esc(c.payload.fact_b_text)}"</button>
-      </div>`).join("") : '<div class="dim">none</div>');
+  const reviewCount = supersessions.length + contradictions.length;
+  const flat = c => `<div class="fact small" style="flex-direction:column; align-items:flex-start">
+      <div><b>${esc(subjOf(c))}</b> — ${esc(c.payload.predicate)}: ${esc(existingOf(c))} ${c.item_kind==='supersession'?'&rarr;':'vs'} ${esc(proposedOf(c))}</div>
+      ${keepUse(c)}</div>`;
+  document.getElementById("conflicts").innerHTML = "<h2>Adjudication</h2>" +
+    `<div class="small dim">${supersessions.length} supersession${supersessions.length===1?'':'s'} · ${contradictions.length} contradiction${contradictions.length===1?'':'s'} · ${merges.length} merge suggestion${merges.length===1?'':'s'}</div>` +
+    (reviewCount
+      ? `<button class="primary" style="margin-top:8px; width:100%" onclick="startReview()">Review ${reviewCount} issue${reviewCount===1?'':'s'} one&nbsp;by&nbsp;one &rarr;</button>`
+      : '<div class="dim" style="margin-top:6px">No supersessions or contradictions to review. &#127881;</div>') +
+    (merges.length ? `<div class="small dim" style="margin-top:8px">${merges.length} merge suggestions are <b>deferred</b> — mostly noise; tackle them later.</div>` : "") +
+    (reviewCount ? `<details style="margin-top:8px"><summary class="small dim">flat list</summary>` +
+      contradictions.map(flat).join("") + supersessions.map(flat).join("") + `</details>` : "");
 
   const staleC = await api("/api/stale-chunks");
   document.getElementById("staleChunks").innerHTML = "<h2>Stale chunks</h2>" +
@@ -559,6 +552,123 @@ async function rollback(seq){
     await loadGraph();
   }
   catch (e){ alert("Rollback failed: " + e.message); }
+}
+
+/* ---------- adjudication workbench ---------- */
+function isolate(ids){
+  if (!cy) return;
+  let sel = cy.collection();
+  (ids||[]).forEach(id => { const n = cy.getElementById(id); if (n && n.nonempty()) sel = sel.union(n); });
+  cy.elements().removeClass("hi").addClass("faded");
+  if (sel.empty()) return;
+  const sub = sel.union(sel.edgesWith(sel));
+  sub.removeClass("faded hidden"); sel.addClass("hi");
+  cy.animate({ fit: { eles: sub, padding: 90 } }, { duration: 280 });
+}
+
+let REVIEW = { items: [], idx: 0 };
+
+async function startReview(){
+  const all = await api("/api/conflicts");
+  REVIEW.items = all.filter(c => c.item_kind === "supersession" || c.item_kind === "claim");
+  REVIEW.idx = 0;
+  if (!REVIEW.items.length){ exitReview(); return; }
+  showIssue();
+}
+
+function whyLine(r){
+  const subj = `<b>${esc(r.subject.name || "this entity")}</b>`;
+  if (r.kind === "supersession")
+    return `Did ${subj}'s <b>${esc(r.predicate)}</b> change? A later story gives a new value. If it really moved, use the newer value; otherwise keep the old.`;
+  return `A story contradicts canon for ${subj}'s <b>${esc(r.predicate)}</b>. Keep what canon holds, or accept the new value.`;
+}
+
+function sideCard(s){
+  const sn = s.snippet || {};
+  const date = sn.story_date ? `<span class="date">${esc(sn.story_date)}</span> · ` : "";
+  const ev = sn.evidence_excerpt
+    ? `<div class="snippet">${date}“${esc(sn.evidence_excerpt)}”<div class="dim" style="margin-top:3px">— ${esc(sn.story_title || "")}${sn.confidence!=null ? ` · conf ${sn.confidence}` : ""}</div></div>`
+    : '<div class="snippet dim">no evidence on file</div>';
+  const primary = s.decision === "accept_proposed";
+  return `<div class="side">
+    <h3>${esc(s.label)}</h3>
+    <div class="val">${esc(s.value ?? "?")}</div>
+    ${ev}
+    <button class="small ${primary?'primary':''}" style="margin-top:8px; width:100%" onclick="decide('${s.decision}')">${primary?'Use this':'Keep this'}</button>
+  </div>`;
+}
+
+function showIssue(){
+  const it = REVIEW.items[REVIEW.idx];
+  if (!it){ exitReview(); return; }
+  const r = it.review;
+  isolate(r.focus_entity_ids);
+  document.getElementById("detail").innerHTML = `
+    <h2>Adjudicate <span class="dim" style="float:right">${REVIEW.idx+1} of ${REVIEW.items.length}</span></h2>
+    <div class="issue">
+      <div>${whyLine(r)}</div>
+      <div class="sides">${r.sides.map(sideCard).join("")}</div>
+      <div style="margin-top:10px"><button class="small" onclick="decide('dismiss')">Not a real change — dismiss (keep canon)</button></div>
+    </div>
+    <div class="editrow">
+      <button class="small" onclick="stepIssue(-1)" ${REVIEW.idx===0?'disabled':''}>&larr; prev</button>
+      <button class="small" onclick="stepIssue(1)" ${REVIEW.idx>=REVIEW.items.length-1?'disabled':''}>next &rarr;</button>
+      <button class="small" style="margin-left:auto" onclick="exitReview()">done</button>
+    </div>`;
+}
+
+function stepIssue(d){
+  REVIEW.idx = Math.max(0, Math.min(REVIEW.items.length-1, REVIEW.idx + d));
+  showIssue();
+}
+
+async function decide(decision){
+  const it = REVIEW.items[REVIEW.idx];
+  if (!it) return;
+  try {
+    await post(`/api/conflicts/${encodeURIComponent(it.item_id)}/resolve`,
+               {decision: decision === "dismiss" ? "keep_existing" : decision});
+  } catch (e){ alert("Resolve failed: " + e.message); return; }
+  REVIEW.items.splice(REVIEW.idx, 1);
+  if (REVIEW.idx >= REVIEW.items.length) REVIEW.idx = Math.max(0, REVIEW.items.length-1);
+  if (REVIEW.items.length){ showIssue(); }
+  else { clearHighlight();
+    document.getElementById("detail").innerHTML =
+      '<h2>Adjudicate</h2><div class="dim">All clear — no more supersessions or contradictions. &#127881; '
+      + '<button class="small" onclick="exitReview()">done</button></div>'; }
+}
+
+function exitReview(){ REVIEW.items = []; clearHighlight(); exitToHome(); loadGraph(); }
+
+/* ---------- prune noise ---------- */
+function loadPrune(){
+  const deg = {};
+  for (const e of G.edges){
+    deg[e.subject_entity_id] = (deg[e.subject_entity_id]||0) + 1;
+    deg[e.object_entity_id] = (deg[e.object_entity_id]||0) + 1;
+  }
+  const noise = G.entities
+    .filter(e => (e.story_count||1) <= 1 && !(deg[e.entity_id] > 0))
+    .sort((a,b) => a.display_name.localeCompare(b.display_name));
+  const panel = document.getElementById("prune");
+  if (!noise.length){ panel.style.display = "none"; return; }
+  panel.style.display = "";
+  panel.innerHTML = `<h2>Prune noise (${noise.length})</h2>`
+    + '<div class="small dim">One-off entities from a single story with no relationships — likely over-extraction. Select and remove (soft-delete, recoverable).</div>'
+    + '<div style="margin:6px 0; display:flex; gap:6px"><button class="small" onclick="pruneSelectAll(true)">all</button>'
+    + '<button class="small" onclick="pruneSelectAll(false)">none</button>'
+    + '<button class="small danger" style="margin-left:auto" onclick="pruneSelected()">remove selected</button></div>'
+    + '<div style="max-height:240px; overflow:auto">'
+    + noise.map(e => `<label class="fact small" style="gap:6px"><input type="checkbox" class="pruneCb" data-id="${esc(e.entity_id)}"> ${esc(e.display_name)} <span class="dim">(${esc(e.kind)})</span></label>`).join("")
+    + '</div>';
+}
+function pruneSelectAll(v){ document.querySelectorAll(".pruneCb").forEach(cb => cb.checked = v); }
+async function pruneSelected(){
+  const ids = [...document.querySelectorAll(".pruneCb:checked")].map(cb => cb.dataset.id);
+  if (!ids.length) return;
+  if (!confirm(`Soft-delete ${ids.length} one-off entit${ids.length===1?'y':'ies'}? Recoverable from history.`)) return;
+  for (const id of ids){ try { await post(`/api/entity/${encodeURIComponent(id)}/deprecate`); } catch (e){} }
+  await loadGraph();
 }
 
 document.getElementById("compileBtn").addEventListener("click", async () => {

@@ -6,6 +6,7 @@ soft deprecate) are the ONLY paths that bypass normal canonization, and both
 preserve history.
 """
 import json
+import re
 import sqlite3
 from pathlib import Path
 
@@ -71,6 +72,102 @@ def _fact_payload(conn: sqlite3.Connection, fact: sqlite3.Row) -> dict:
             "edited_at": src["created_at"] if src else None,
         }
     return payload
+
+
+_STORY_DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})")
+
+
+def _story_date(story_id):
+    """The told-date of a story, parsed from its id prefix (set by the batch ingest)."""
+    m = _STORY_DATE_RE.match(story_id or "")
+    return m.group(1) if m else None
+
+
+def _entity_name(conn: sqlite3.Connection, entity_id):
+    if not entity_id:
+        return None
+    row = conn.execute(
+        "SELECT display_name FROM entities WHERE entity_id=?", (entity_id,)
+    ).fetchone()
+    return row["display_name"] if row else entity_id
+
+
+def _claim_snippet(conn: sqlite3.Connection, claim_id):
+    """Evidence behind a proposing claim: the story it came from, its date, and quote."""
+    if not claim_id:
+        return None
+    cl = conn.execute(
+        "SELECT story_id, confidence, evidence_excerpt FROM claims WHERE claim_id=?",
+        (claim_id,),
+    ).fetchone()
+    if cl is None:
+        return None
+    st = conn.execute(
+        "SELECT title FROM story_runs WHERE story_id=?", (cl["story_id"],)
+    ).fetchone()
+    return {"story_id": cl["story_id"], "story_title": st["title"] if st else None,
+            "story_date": _story_date(cl["story_id"]),
+            "evidence_excerpt": cl["evidence_excerpt"], "confidence": cl["confidence"]}
+
+
+def _fact_snippet(conn: sqlite3.Connection, fact_id):
+    """Evidence behind an existing fact, via its source claim (reuses _fact_payload)."""
+    if not fact_id:
+        return None
+    f = conn.execute("SELECT * FROM facts WHERE fact_id=?", (fact_id,)).fetchone()
+    if f is None:
+        return None
+    prov = _fact_payload(conn, f).get("provenance") or {}
+    sid = prov.get("story_id")
+    return {"story_id": sid, "story_title": prov.get("story_title"),
+            "story_date": _story_date(sid), "evidence_excerpt": prov.get("evidence_excerpt"),
+            "confidence": prov.get("claim_confidence")}
+
+
+def _conflict_review(conn: sqlite3.Connection, item_kind: str, p: dict) -> dict:
+    """A decidable, name-resolved view of one adjudication item: the subject, the
+    competing sides each with source-story evidence + dates, and the entity ids the
+    graph should isolate. Supersession sides are ordered oldest -> newest so the
+    operator can confirm a newer story changed older canon."""
+    subj_id = p.get("subject_entity_id")
+    focus = {subj_id} if subj_id else set()
+    review = {
+        "subject": {"id": subj_id, "name": _entity_name(conn, subj_id)},
+        "predicate": p.get("predicate"),
+        "kind": "contradiction" if item_kind == "claim" else item_kind,
+        "sides": [],
+    }
+    if item_kind in ("supersession", "claim"):
+        ex_id, pr_id = p.get("existing_object_entity_id"), p.get("proposed_object_entity_id")
+        for vid in (ex_id, pr_id):
+            if vid:
+                focus.add(vid)
+        existing = {
+            "label": "current canon" if item_kind == "claim" else "earlier value",
+            "decision": "keep_existing",
+            "value": _entity_name(conn, ex_id) if ex_id else p.get("existing_object_literal"),
+            "snippet": _fact_snippet(conn, p.get("existing_fact_id")),
+        }
+        proposed = {
+            "label": "proposed by a story" if item_kind == "claim" else "new value",
+            "decision": "accept_proposed",
+            "value": _entity_name(conn, pr_id) if pr_id else p.get("proposed_object_literal"),
+            "snippet": _claim_snippet(conn, p.get("claim_id")),
+        }
+        sides = [existing, proposed]
+        if item_kind == "supersession":
+            sides.sort(key=lambda s: (s["snippet"] or {}).get("story_date") or "")
+        review["sides"] = sides
+    elif item_kind == "merge_suggestion":
+        review["cosine"] = p.get("cosine")
+        review["sides"] = [
+            {"label": "value A", "value": p.get("fact_a_text"), "fact_id": p.get("fact_a"),
+             "snippet": _fact_snippet(conn, p.get("fact_a"))},
+            {"label": "value B", "value": p.get("fact_b_text"), "fact_id": p.get("fact_b"),
+             "snippet": _fact_snippet(conn, p.get("fact_b"))},
+        ]
+    review["focus_entity_ids"] = sorted(focus)
+    return review
 
 
 def export_subgraph(conn: sqlite3.Connection, entity_slug: str | None = None) -> dict:
@@ -274,7 +371,11 @@ def create_app(db_path: str | Path | None = None, *, home: str | Path | None = N
         rows = c.execute(
             "SELECT * FROM adjudication_queue WHERE status='open' ORDER BY item_id"
         ).fetchall()
-        out = [{**dict(r), "payload": json.loads(r["payload_json"])} for r in rows]
+        out = []
+        for r in rows:
+            p = json.loads(r["payload_json"])
+            out.append({**dict(r), "payload": p,
+                        "review": _conflict_review(c, r["item_kind"], p)})
         c.close()
         return jsonify(out)
 

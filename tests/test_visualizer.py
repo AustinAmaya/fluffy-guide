@@ -37,6 +37,7 @@ def test_read_endpoints(client_db):
         and e["object_entity_id"] == "ent_boxwell"
         for e in graph["edges"]
     )
+    assert all("story_count" in e for e in graph["entities"])  # drives the strength slider
 
     facts = client.get("/api/facts?entity=ent_boxwell").get_json()
     profession = next(f for f in facts if f["predicate"] == "profession")
@@ -46,6 +47,15 @@ def test_read_endpoints(client_db):
     conflicts = client.get("/api/conflicts").get_json()
     assert len(conflicts) == 1
     assert conflicts[0]["payload"]["proposed_object_literal"] == "baker"
+    # the review enrichment makes the issue decidable: named subject, focus ids,
+    # and two sides where the proposed side carries its source-story evidence.
+    review = conflicts[0]["review"]
+    assert review["subject"]["name"] == "Boxwell"
+    assert "ent_boxwell" in review["focus_entity_ids"]
+    assert len(review["sides"]) == 2
+    proposed = next(s for s in review["sides"] if s["decision"] == "accept_proposed")
+    assert proposed["value"] == "baker"
+    assert proposed["snippet"] and proposed["snippet"]["evidence_excerpt"]
 
     motifs = client.get("/api/motifs").get_json()
     assert [m["object_literal"] for m in motifs] == ["Mayor of the Mantelpiece"]
