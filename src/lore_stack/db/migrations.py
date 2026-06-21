@@ -11,6 +11,7 @@ MIGRATIONS = [
     ("0005_supersession", "migration_0005_supersession.sql"),
     ("0006_chunk_staleness", "migration_0006_chunk_staleness.sql"),
     ("0007_entity_exclusions", "migration_0007_entity_exclusions.sql"),
+    ("0008_entity_merge", "migration_0008_entity_merge.sql"),
 ]
 
 

@@ -25,7 +25,9 @@ from lore_stack.writeback import (
     deprecate_entity,
     deprecate_fact,
     manual_edit_fact,
+    propose_entity_merge,
     resolve_contradiction,
+    resolve_entity_merge,
     resolve_merge_suggestion,
     resolve_supersession,
     restore_entity,
@@ -166,6 +168,28 @@ def _conflict_review(conn: sqlite3.Connection, item_kind: str, p: dict) -> dict:
             {"label": "value B", "value": p.get("fact_b_text"), "fact_id": p.get("fact_b"),
              "snippet": _fact_snippet(conn, p.get("fact_b"))},
         ]
+    elif item_kind == "entity_merge":
+        review["subject"] = {"id": None, "name": "duplicate entities?"}
+        review["predicate"] = "merge"
+        sides = []
+        for eid in p.get("entity_ids", []):
+            focus.add(eid)
+            ent = conn.execute(
+                "SELECT display_name, kind, summary FROM entities WHERE entity_id=?", (eid,)
+            ).fetchone()
+            sc = conn.execute(
+                "SELECT COUNT(DISTINCT story_id) FROM story_entities WHERE entity_id=?", (eid,)
+            ).fetchone()[0]
+            sides.append({
+                "label": f"keep this · {sc} stor{'y' if sc == 1 else 'ies'}"
+                         + (f" · {ent['kind']}" if ent else ""),
+                "value": ent["display_name"] if ent else eid,
+                "decision": eid,  # keep == this entity's id
+                "snippet": ({"evidence_excerpt": ent["summary"], "story_title": None,
+                             "story_date": None, "confidence": None}
+                            if ent and ent["summary"] else None),
+            })
+        review["sides"] = sides
     review["focus_entity_ids"] = sorted(focus)
     return review
 
@@ -503,6 +527,21 @@ def create_app(db_path: str | Path | None = None, *, home: str | Path | None = N
         c.close()
         return jsonify(out)
 
+    @app.post("/api/entity-merge")
+    def entity_merge_route():
+        body = request.get_json(silent=True) or {}
+        ids = body.get("entity_ids")
+        if not isinstance(ids, list) or len(ids) < 2:
+            return jsonify({"error": "entity_ids (a list of >= 2) is required"}), 400
+        c = conn()
+        try:
+            item_id = propose_entity_merge(c, ids)
+        except WritebackError as exc:
+            c.close()
+            return jsonify({"error": str(exc)}), 400
+        c.close()
+        return jsonify({"ok": True, "item_id": item_id})
+
     @app.post("/api/conflicts/<item_id>/resolve")
     def resolve_conflict_route(item_id):
         body = request.get_json(silent=True) or {}
@@ -514,8 +553,11 @@ def create_app(db_path: str | Path | None = None, *, home: str | Path | None = N
             kind = c.execute(
                 "SELECT item_kind FROM adjudication_queue WHERE item_id=?", (item_id,)
             ).fetchone()
-            if kind is not None and kind["item_kind"] == "supersession":
+            k = kind["item_kind"] if kind is not None else None
+            if k == "supersession":
                 resolve_supersession(c, item_id, decision)
+            elif k == "entity_merge":
+                resolve_entity_merge(c, item_id, decision)  # decision = surviving entity id
             else:
                 resolve_contradiction(c, item_id, decision)
         except WritebackError as exc:

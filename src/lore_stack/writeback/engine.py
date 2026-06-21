@@ -853,6 +853,111 @@ def resolve_supersession(conn: sqlite3.Connection, item_id: str, decision: str) 
         )
 
 
+def _merge_entity_into(conn, keep_id: str, drop_id: str, now: str) -> None:
+    """Fold drop_id into keep_id: re-point its facts, chunks, story-appearances, and
+    aliases onto keep, drop any relationship that becomes a self-loop, then
+    soft-deprecate the now-empty duplicate (recoverable, history preserved)."""
+    conn.execute("UPDATE facts SET subject_entity_id=?, updated_at=? WHERE subject_entity_id=?",
+                 (keep_id, now, drop_id))
+    conn.execute("UPDATE facts SET object_entity_id=?, updated_at=? WHERE object_entity_id=?",
+                 (keep_id, now, drop_id))
+    # a relationship between the two merged entities is now keep->keep: drop it.
+    conn.execute(
+        "UPDATE facts SET status='deprecated', updated_at=? WHERE subject_entity_id=?"
+        " AND object_entity_id=? AND status != 'deprecated'", (now, keep_id, keep_id))
+    conn.execute("UPDATE lore_chunks SET entity_id=?, updated_at=? WHERE entity_id=?",
+                 (keep_id, now, drop_id))
+    # story appearances: re-point, dedup on the (story_id, entity_id) primary key.
+    conn.execute(
+        "INSERT OR IGNORE INTO story_entities (story_id, entity_id, role, mention_count, salience)"
+        " SELECT story_id, ?, role, mention_count, salience FROM story_entities WHERE entity_id=?",
+        (keep_id, drop_id))
+    conn.execute("DELETE FROM story_entities WHERE entity_id=?", (drop_id,))
+    # aliases are globally unique-by-normalized, so they re-point without collision;
+    # the duplicate's names become surface aliases of the survivor.
+    conn.execute("UPDATE entity_aliases SET entity_id=?, alias_type='surface' WHERE entity_id=?",
+                 (keep_id, drop_id))
+    conn.execute("UPDATE entities SET status='deprecated', updated_at=? WHERE entity_id=?",
+                 (now, drop_id))
+    # the survivor may now be corroborated across >=2 stories -> canonical.
+    n = conn.execute(
+        "SELECT COUNT(DISTINCT story_id) FROM story_entities WHERE entity_id=?", (keep_id,)
+    ).fetchone()[0]
+    if n >= 2:
+        conn.execute("UPDATE entities SET status='canonical', updated_at=? WHERE entity_id=?"
+                     " AND status='provisional'", (now, keep_id))
+
+
+def propose_entity_merge(conn: sqlite3.Connection, entity_ids) -> str:
+    """Operator-initiated: queue a suggestion to merge >=2 entities into one. Writes
+    nothing to the lore until resolved; idempotent for the same set."""
+    ids = [e for e in dict.fromkeys(entity_ids) if e]
+    if len(ids) < 2:
+        raise WritebackError("an entity merge needs at least two distinct entities")
+    rows = conn.execute(
+        f"SELECT entity_id, display_name FROM entities WHERE entity_id IN"
+        f" ({','.join('?' * len(ids))}) AND status != 'deprecated'", ids).fetchall()
+    found = {r["entity_id"]: r["display_name"] for r in rows}
+    missing = [e for e in ids if e not in found]
+    if missing:
+        raise WritebackError(f"unknown or deprecated entities: {missing}")
+    item_id = f"emrg_{_short_hash(*sorted(ids))}"
+    existing = conn.execute(
+        "SELECT status FROM adjudication_queue WHERE item_id=?", (item_id,)).fetchone()
+    if existing and existing["status"] == "open":
+        return item_id
+    maybe_snapshot(conn, f"propose merge {','.join(ids)}")
+    now = _now()
+    with conn:
+        payload = {"kind": "entity_merge", "entity_ids": ids,
+                   "entity_names": [found[e] for e in ids]}
+        conn.execute(
+            "INSERT OR REPLACE INTO adjudication_queue (item_id, item_kind, reason,"
+            " payload_json, status, created_at) VALUES (?, 'entity_merge', ?, ?, 'open', ?)",
+            (item_id, f"operator-proposed merge of {', '.join(found[e] for e in ids)}",
+             json.dumps(payload), now))
+    return item_id
+
+
+def resolve_entity_merge(conn: sqlite3.Connection, item_id: str, keep_entity_id: str) -> None:
+    """Resolve an entity-merge item: fold the others into `keep_entity_id`. A
+    `keep_entity_id` of 'dismiss'/'keep_existing' (or not one of the candidates)
+    dismisses it — the entities were distinct after all."""
+    item = conn.execute(
+        "SELECT payload_json, status, item_kind FROM adjudication_queue WHERE item_id=?",
+        (item_id,)).fetchone()
+    if item is None or item["item_kind"] != "entity_merge":
+        raise WritebackError(f"no entity merge {item_id!r}")
+    if item["status"] != "open":
+        raise WritebackError(f"entity merge {item_id!r} is already {item['status']}")
+    payload = json.loads(item["payload_json"])
+    ids = payload["entity_ids"]
+    now = _now()
+    if keep_entity_id in ("dismiss", "keep_existing") or keep_entity_id not in ids:
+        if keep_entity_id not in ("dismiss", "keep_existing"):
+            raise WritebackError(f"{keep_entity_id!r} is not one of this merge's entities")
+        maybe_snapshot(conn, f"dismiss merge {item_id}")
+        with conn:
+            payload["resolution"] = {"decision": "dismissed"}
+            conn.execute("UPDATE adjudication_queue SET status='dismissed', payload_json=?"
+                         " WHERE item_id=?", (json.dumps(payload), item_id))
+        return
+    keep_row = conn.execute(
+        "SELECT status FROM entities WHERE entity_id=?", (keep_entity_id,)).fetchone()
+    if keep_row is None or keep_row["status"] == "deprecated":
+        raise WritebackError(f"survivor {keep_entity_id!r} is unknown or deprecated")
+    maybe_snapshot(conn, f"merge into {keep_entity_id}")
+    with conn:
+        for drop_id in [e for e in ids if e != keep_entity_id]:
+            if conn.execute("SELECT status FROM entities WHERE entity_id=? AND status!='deprecated'",
+                            (drop_id,)).fetchone():
+                _merge_entity_into(conn, keep_entity_id, drop_id, now)
+        payload["resolution"] = {"kept": keep_entity_id,
+                                 "merged": [e for e in ids if e != keep_entity_id]}
+        conn.execute("UPDATE adjudication_queue SET status='resolved', payload_json=?"
+                     " WHERE item_id=?", (json.dumps(payload), item_id))
+
+
 def deprecate_fact(conn: sqlite3.Connection, fact_id: str) -> None:
     row = conn.execute("SELECT fact_id FROM facts WHERE fact_id=?", (fact_id,)).fetchone()
     if row is None:

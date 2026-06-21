@@ -102,7 +102,12 @@
     <button id="zoomOut" title="Zoom out">&minus;</button>
     <button id="resetView" title="Fit graph to view">fit</button>
   </div>
-  <div id="graphHint">drag to pan &middot; scroll to zoom &middot; click a node to focus its neighborhood</div>
+  <div id="mergebar" style="position:absolute; bottom:48px; left:50%; transform:translateX(-50%); z-index:5; display:none; align-items:center; gap:10px; background:rgba(15,17,23,.92); border:1px solid var(--accent); border-radius:9px; padding:8px 12px;">
+    <span class="small"></span>
+    <button class="primary" onclick="suggestMerge()">Suggest merge &rarr; queue</button>
+    <button class="small" onclick="clearSelect()">clear</button>
+  </div>
+  <div id="graphHint">drag to pan &middot; scroll to zoom &middot; click a node to focus &middot; ctrl/&#8984;-click to multi-select &amp; merge</div>
 </div>
 <aside>
   <div class="panel" id="inbox" style="display:none"><h2>Review inbox</h2></div>
@@ -253,13 +258,21 @@ function renderGraph(){
       { selector:".hidden", style:{ "display":"none" } },
       { selector:"node.hi", style:{ "border-color":"#e0a64e", "border-width":3 } },
       { selector:"edge.hi", style:{ "line-color":"#e0a64e", "target-arrow-color":"#e0a64e",
-        "width":2, "color":"#e0a64e", "text-opacity":1 } } ],
+        "width":2, "color":"#e0a64e", "text-opacity":1 } },
+      { selector:"node.sel", style:{ "border-color":"#e0a64e", "border-width":4,
+        "border-style":"solid", "background-blacken":-0.15 } } ],
     layout: { name:"fcose", quality:"default", animate:false, randomize:true,
               nodeSeparation:80, idealEdgeLength:75, nodeRepulsion:6500 },
   });
-  cy.on("tap", "node", ev => { const id = ev.target.id(); highlight(id); showEntity(id); });
-  cy.on("tap", ev => { if (ev.target === cy){ clearHighlight(); exitToHome(); } });
+  cy.on("tap", "node", ev => {
+    const id = ev.target.id();
+    const oe = ev.originalEvent;
+    if (oe && (oe.ctrlKey || oe.metaKey)){ toggleSelect(id); return; }  // ctrl/cmd+click multi-select
+    clearSelect(); highlight(id); showEntity(id);
+  });
+  cy.on("tap", ev => { if (ev.target === cy){ clearSelect(); clearHighlight(); exitToHome(); } });
   applyFilters();
+  syncSelect();
 }
 
 function applyFilters(){
@@ -287,6 +300,26 @@ function highlight(id){
   n.addClass("hi"); n.connectedEdges().addClass("hi");
 }
 function clearHighlight(){ if (cy) cy.elements().removeClass("faded hi"); }
+
+/* multi-select (ctrl/cmd+click) -> propose an entity merge into the queue */
+let SELECTED = new Set();
+function toggleSelect(id){ SELECTED.has(id) ? SELECTED.delete(id) : SELECTED.add(id); syncSelect(); }
+function clearSelect(){ if (SELECTED.size){ SELECTED.clear(); syncSelect(); } }
+function syncSelect(){
+  if (cy) cy.nodes().forEach(n => n.toggleClass("sel", SELECTED.has(n.id())));
+  const bar = document.getElementById("mergebar");
+  if (!bar) return;
+  if (SELECTED.size >= 2){ bar.style.display = "flex"; bar.querySelector("span").textContent = `${SELECTED.size} entities selected`; }
+  else bar.style.display = "none";
+}
+async function suggestMerge(){
+  const ids = [...SELECTED];
+  if (ids.length < 2) return;
+  try { await post("/api/entity-merge", {entity_ids: ids}); }
+  catch (e){ alert("Could not propose merge: " + e.message); return; }
+  clearSelect();
+  startReview();   // the new entity-merge proposal is now in the queue — adjudicate it
+}
 
 function setupControls(){
   // kind chips
@@ -447,8 +480,8 @@ async function loadPanels(){
   await loadInbox();
   const conflicts = await api("/api/conflicts");
   const supersessions = conflicts.filter(c => c.item_kind === "supersession");
-  const contradictions = conflicts.filter(c =>
-    c.item_kind !== "supersession" && c.payload.kind !== "merge_suggestion");
+  const contradictions = conflicts.filter(c => c.item_kind === "claim");
+  const entityMerges = conflicts.filter(c => c.item_kind === "entity_merge");
   const merges = conflicts.filter(c => c.payload.kind === "merge_suggestion");
   const proposedOf = c => nameOf(c.payload.proposed_object_entity_id ?? c.payload.proposed_object_literal);
   const existingOf = c => nameOf(c.payload.existing_object_entity_id ?? c.payload.existing_object_literal);
@@ -457,12 +490,12 @@ async function loadPanels(){
       <button class="small" onclick="resolveConflict('${esc(c.item_id)}','keep_existing')">keep "${esc(existingOf(c))}"</button>
       <button class="small primary" onclick="resolveConflict('${esc(c.item_id)}','accept_proposed')">use "${esc(proposedOf(c))}"</button>
     </div>`;
-  const reviewCount = supersessions.length + contradictions.length;
+  const reviewCount = supersessions.length + contradictions.length + entityMerges.length;
   const flat = c => `<div class="fact small" style="flex-direction:column; align-items:flex-start">
       <div><b>${esc(subjOf(c))}</b> — ${esc(c.payload.predicate)}: ${esc(existingOf(c))} ${c.item_kind==='supersession'?'&rarr;':'vs'} ${esc(proposedOf(c))}</div>
       ${keepUse(c)}</div>`;
   document.getElementById("conflicts").innerHTML = "<h2>Adjudication</h2>" +
-    `<div class="small dim">${supersessions.length} supersession${supersessions.length===1?'':'s'} · ${contradictions.length} contradiction${contradictions.length===1?'':'s'} · ${merges.length} merge suggestion${merges.length===1?'':'s'}</div>` +
+    `<div class="small dim">${supersessions.length} supersession${supersessions.length===1?'':'s'} · ${contradictions.length} contradiction${contradictions.length===1?'':'s'}${entityMerges.length?` · ${entityMerges.length} entity-merge${entityMerges.length===1?'':'s'}`:''} · ${merges.length} value-merge suggestion${merges.length===1?'':'s'}</div>` +
     (reviewCount
       ? `<button class="primary" style="margin-top:8px; width:100%" onclick="startReview()">Review ${reviewCount} issue${reviewCount===1?'':'s'} one&nbsp;by&nbsp;one &rarr;</button>`
       : '<div class="dim" style="margin-top:6px">No supersessions or contradictions to review. &#127881;</div>') +
@@ -570,13 +603,15 @@ let REVIEW = { items: [], idx: 0 };
 
 async function startReview(){
   const all = await api("/api/conflicts");
-  REVIEW.items = all.filter(c => c.item_kind === "supersession" || c.item_kind === "claim");
+  REVIEW.items = all.filter(c => ["supersession", "claim", "entity_merge"].includes(c.item_kind));
   REVIEW.idx = 0;
   if (!REVIEW.items.length){ exitReview(); return; }
   showIssue();
 }
 
 function whyLine(r){
+  if (r.kind === "entity_merge")
+    return `Are these the same thing? Merging keeps one entity and folds the others — their facts, relationships, and story mentions — into it. Pick which one survives, or dismiss if they're actually distinct.`;
   const subj = `<b>${esc(r.subject.name || "this entity")}</b>`;
   if (r.kind === "supersession")
     return `Did ${subj}'s <b>${esc(r.predicate)}</b> change? A later story gives a new value. If it really moved, use the newer value; otherwise keep the old.`;
